@@ -92,6 +92,34 @@ static void PreventWindowsDPIScaling() {
   }
 }
 
+// https://devblogs.microsoft.com/oldnewthing/20100412-00/?p=14353
+WINDOWPLACEMENT prevWindowDimensions = {sizeof(prevWindowDimensions)};
+void SetFullscreen(HWND window, i32 isFullscreen)
+{
+    DWORD style = GetWindowLong(window, GWL_STYLE);
+    if (isFullscreen)
+    {
+        MONITORINFO monitorInfo = {sizeof(monitorInfo)};
+        if (GetWindowPlacement(window, &prevWindowDimensions) &&
+            GetMonitorInfo(MonitorFromWindow(window, MONITOR_DEFAULTTOPRIMARY), &monitorInfo))
+        {
+            SetWindowLong(window, GWL_STYLE, style & ~WS_OVERLAPPEDWINDOW);
+
+            SetWindowPos(window, HWND_TOP,
+                         monitorInfo.rcMonitor.left, monitorInfo.rcMonitor.top,
+                         monitorInfo.rcMonitor.right - monitorInfo.rcMonitor.left,
+                         monitorInfo.rcMonitor.bottom - monitorInfo.rcMonitor.top,
+                         SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+        }
+    }
+    else
+    {
+        SetWindowLong(window, GWL_STYLE, style | WS_OVERLAPPEDWINDOW);
+        SetWindowPlacement(window, &prevWindowDimensions);
+        SetWindowPos(window, NULL, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+    }
+}
 inline u8 RoundU8(f32 v) { return (u8)(v + 0.5); }
 inline f32 lerp(f32 from, f32 to, f32 factor) {
   return from * (1 - factor) + to * factor;

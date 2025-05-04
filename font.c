@@ -72,29 +72,22 @@ inline void CopyRectTo(MyBitmap *sourceT, MonochromeTexture *destination) {
   }
 }
 
-HDC deviceContext;
-MyBitmap fontCanvas;
-HBITMAP fontBitmap;
-void InitFontSystem() {
-  deviceContext = CreateCompatibleDC(0);
+
+void InitFont(FontData *fontData, char *name, i32 fontSize, Arena *arena) {
+
+  HDC deviceContext = CreateCompatibleDC(0);
   BITMAPINFO info = {0};
   int textureSize = 256;
   InitBitmapInfo(&info, textureSize, textureSize);
 
   void *bits;
-  fontBitmap =
+  HBITMAP fontBitmap =
       CreateDIBSection(deviceContext, &info, DIB_RGB_COLORS, &bits, 0, 0);
+  MyBitmap fontCanvas = {0};
   fontCanvas.height = textureSize;
   fontCanvas.width = textureSize;
   fontCanvas.pixels = (u32 *)bits;
-}
 
-void TeardownFontSystem() {
-  DeleteObject(fontBitmap);
-  DeleteDC(deviceContext);
-}
-
-void InitFont(FontData *fontData, char *name, i32 fontSize, Arena *arena) {
   int h = -MulDiv(fontSize, GetDeviceCaps(deviceContext, LOGPIXELSY),
                   USER_DEFAULT_SCREEN_DPI);
   HFONT font =
@@ -130,6 +123,7 @@ void InitFont(FontData *fontData, char *name, i32 fontSize, Arena *arena) {
 
     CopyRectTo(&fontCanvas, texture);
   }
+
   GetTextMetricsA(deviceContext, &fontData->textMetric);
 
   if (fontData->textures['i'].width == fontData->textures['W'].width) {
@@ -139,6 +133,8 @@ void InitFont(FontData *fontData, char *name, i32 fontSize, Arena *arena) {
   fontData->charHeight = fontData->textMetric.tmHeight;
 
   DeleteObject(font);
+  DeleteObject(fontBitmap);
+  DeleteDC(deviceContext);
 }
 
 inline u32 AlphaBlendColors(u32 from, u32 to, f32 factor){

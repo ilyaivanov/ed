@@ -14,7 +14,10 @@ u32 colorsCursorInsert = 0x008800;
 u32 colorsCursorLineNormal = 0x101510;
 u32 colorsCursorLineInsert = 0x151010;
 
+u32 colorsScrollbar = 0x222222;
+
 int isRunning = 1;
+int isFullscreen = 0;
 u32 height;
 u32 width;
 Spring offset;
@@ -77,6 +80,15 @@ i32 GetPageHeight() {
 
 void SetCursorPosition(i32 v) {
   cursorPos = Clampi32(v, 0, file.size);
+  CursorPos cursor = GetCursorPosition();
+  // offset.target = 200;
+  float lineToLookAhead = 5.0f * fontD.charHeight;
+  float cursorPos = cursor.line * fontD.charHeight;
+  float maxScroll = GetPageHeight() - rect.height;
+  if ((offset.target + rect.height - lineToLookAhead) < cursorPos)
+    offset.target = Clamp(cursorPos - (float)rect.height / 2.0f, 0, maxScroll);
+  else if ((offset.target + lineToLookAhead) > cursorPos)
+    offset.target = Clamp(cursorPos - (float)rect.height / 2.0f, 0, maxScroll);
 }
 
 void MoveDown() {
@@ -244,7 +256,10 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     } else if (mode == Normal) {
       if (wParam == VK_ESCAPE)
         ClearCommand();
-      else if (IsKeyPressed(VK_CONTROL) && wParam == 'D') {
+      else if (wParam == VK_F11) {
+        isFullscreen = !isFullscreen;
+        SetFullscreen(window, isFullscreen);
+      } else if (IsKeyPressed(VK_CONTROL) && wParam == 'D') {
         offset.target += (float)rect.height / 2.0f;
       } else if (IsKeyPressed(VK_CONTROL) && wParam == 'U') {
         offset.target -= (float)rect.height / 2.0f;
@@ -309,9 +324,6 @@ void DrawFooter() {
   int len = strlen(label);
   int footerHeight = fontD.charHeight + padding * 2;
   PaintRect(0, rect.height - footerHeight, rect.width, footerHeight, 0x202020);
-  // int x = rect.width -
-  // fontD.charWidth * (len + 1) -
-  // padding;
   int x = padding;
   int y = rect.height - fontD.charHeight - padding;
   while (*label) {
@@ -331,6 +343,23 @@ void DrawFooter() {
   }
 }
 
+void DrawScrollBar() {
+  f32 pageHeight =(f32) GetPageHeight();
+  float scrollbarWidth = 10;
+  if (rect.height < pageHeight) {
+    f32 height = (f32)rect.height;
+    f32 scrollOffset = (f32)offset.current;
+
+    f32 scrollbarHeight = (height * height) / pageHeight;
+
+    f32 maxOffset = pageHeight - height;
+    f32 maxScrollY = height - scrollbarHeight;
+    f32 scrollY = lerp(0, maxScrollY, scrollOffset / maxOffset);
+
+    PaintRect(rect.x + rect.width - scrollbarWidth, rect.y + scrollY, scrollbarWidth, (i32)scrollbarHeight,
+              colorsScrollbar);
+  }
+}
 void Draw() {
   for (i32 i = 0; i < canvas.width * canvas.height; i++)
     canvas.pixels[i] = colorsBg;
@@ -370,9 +399,8 @@ void Draw() {
   }
 
   DrawFooter();
-  StretchDIBits(dc, 0, 0, width, height, 0, 0, width, height, canvas.pixels,
-
-                &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+  DrawScrollBar();
+  StretchDIBits(dc, 0, 0, width, height, 0, 0, width, height, canvas.pixels, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
 }
 
 inline i64 EllapsedMs(i64 start) {
@@ -391,7 +419,6 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
   file = ReadFileIntoDoubledSizedBuffer(filePath);
   currentFile = &file;
 
-  InitFontSystem();
   InitAnimations();
   Arena fontArena = CreateArena(500 * 1024);
   InitFont(&fontD, "Consolas", 14, &fontArena);

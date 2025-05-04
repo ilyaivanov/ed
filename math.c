@@ -14,3 +14,10 @@ i32 Clampi32(i32 val, i32 min, i32 max) {
   return val;
 }
 
+float Clamp(float val, float min, float max) {
+  if (val < min)
+    return min;
+  if (val > max)
+    return max;
+  return val;
+}
