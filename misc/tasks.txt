@@ -1,0 +1,17 @@
+OverallProgress
+  Operations - d y c p i a I A 
+  Motions - a i aw ib i} i) i" fx tx W B e ge
+  Text Objects (i a) } ) ' " b B t
+  Undo\Redo
+  CLI integration
+  Splits
+  Multiple cursors
+  Folds
+  Folder Explorer
+
+Other
+  Shell
+
+
+
+Timeline
