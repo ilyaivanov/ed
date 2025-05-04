@@ -1,5 +1,7 @@
-
+#include "anim.c"
 #include "font.c"
+#include "math.c"
+#include "string.c"
 #include "win32.c"
 #include <math.h>
 
@@ -15,91 +17,23 @@ u32 colorsCursorLineInsert = 0x151010;
 int isRunning = 1;
 u32 height;
 u32 width;
-
-typedef struct StringBuffer {
-  char *content;
-  i32 size;
-  i32 capacity;
-} StringBuffer;
-
+Spring offset;
 typedef enum Mode { Normal, Insert } Mode;
 f32 appTimeMs = 0;
-char *filePath = "..\\misc\\sample.txt";
+char *filePath = "..\\main.c";
 Mode mode = Normal;
 StringBuffer file;
 BITMAPINFO bitmapInfo;
 MyBitmap canvas;
 HDC dc;
-i32 recX = 1;
-i32 recY = 1;
 HFONT font;
-i32 cursorPos = 0;
 i32 isJustEnteredInsert;
 i32 isSaved = 1;
 char currentCommand[512];
 i32 currentCommandLen;
 i32 visibleCommandLen;
-
-// Math
-inline i32 MinI32(i32 v1, i32 v2) {
-  return v1 < v2 ? v1 : v2;
-}
-inline i32 MaxI32(i32 v1, i32 v2) {
-  return v1 > v2 ? v1 : v2;
-}
-i32 Clampi32(i32 val, i32 min, i32 max) {
-  if (val < min)
-    return min;
-  if (val > max)
-    return max;
-  return val;
-}
-
-// Text
-inline void MoveBytesLeft(char *ptr, int length) {
-  for (int i = 0; i < length - 1; i++) {
-    ptr[i] = ptr[i + 1];
-  }
-}
-
-inline void PlaceLineEnd(StringBuffer *buffer) {
-  if (buffer->content)
-    *(buffer->content + buffer->size) = '\0';
-}
-
-void RemoveCharAt(StringBuffer *buffer, i32 at) {
-  MoveBytesLeft(buffer->content + at, buffer->size - at);
-  buffer->size--;
-  PlaceLineEnd(buffer);
-}
-
-void InsertCharAtCursor(char ch) {
-  i32 textSize = file.size;
-  i32 pos = cursorPos;
-  char *text = file.content;
-  memmove(text + pos + 1, text + pos, textSize - pos);
-
-  text[pos] = ch;
-
-  file.size++;
-  cursorPos++;
-}
-
-i32 FindLineStart(i32 pos) {
-  while (pos > 0 && file.content[pos - 1] != '\n')
-    pos--;
-
-  return pos;
-}
-
-i32 FindLineEnd(i32 pos) {
-  i32 textSize = file.size;
-  char *text = file.content;
-  while (pos < textSize && text[pos] != '\n')
-    pos++;
-
-  return pos;
-}
+FontData fontD;
+Rect rect = {0};
 
 typedef struct CursorPos {
   i32 global;
@@ -131,6 +65,16 @@ CursorPos GetCursorPosition() {
   }
   return res;
 }
+
+i32 GetPageHeight() {
+  int rows = 1;
+  for (i32 i = 0; i < file.size; i++) {
+    if (file.content[i] == '\n')
+      rows++;
+  }
+  return rows * fontD.charHeight;
+}
+
 void SetCursorPosition(i32 v) {
   cursorPos = Clampi32(v, 0, file.size);
 }
@@ -193,7 +137,7 @@ void JumpWordBackward() {
 
 void RemoveCurrentChar() {
   if (cursorPos > 0) {
-    RemoveCharAt(&file, cursorPos - 1);
+    RemoveCharAt(cursorPos - 1);
     cursorPos--;
   }
 }
@@ -206,9 +150,11 @@ void SaveFile() {
 inline BOOL IsKeyPressed(u32 code) {
   return (GetKeyState(code) >> 15) & 1;
 }
-
-void TryPerformCommand() {
-  // if(command
+void MoveLeft() {
+  cursorPos = MaxI32(cursorPos - 1, 0);
+}
+void MoveRight() {
+  cursorPos = MinI32(cursorPos + 1, file.size);
 }
 
 void AppendCharIntoCommand(char ch) {
@@ -220,6 +166,44 @@ void AppendCharIntoCommand(char ch) {
     visibleCommandLen = currentCommandLen;
     currentCommandLen = 0;
   }
+  if (currentCommand[0] == 'k') {
+    MoveUp();
+    visibleCommandLen = currentCommandLen;
+    currentCommandLen = 0;
+  }
+  if (currentCommand[0] == 'h') {
+    MoveLeft();
+    visibleCommandLen = currentCommandLen;
+    currentCommandLen = 0;
+  }
+  if (currentCommand[0] == 'l') {
+    MoveRight();
+    visibleCommandLen = currentCommandLen;
+    currentCommandLen = 0;
+  }
+  if (currentCommand[0] == 'w') {
+    JumpWordForward();
+    visibleCommandLen = currentCommandLen;
+    currentCommandLen = 0;
+  }
+  if (currentCommand[0] == 'b') {
+    JumpWordBackward();
+    visibleCommandLen = currentCommandLen;
+    currentCommandLen = 0;
+  }
+  if (currentCommandLen == 2 && currentCommand[0] == 'g' && currentCommand[1] == 'g') {
+    cursorPos = 0;
+    offset.target = 0;
+    visibleCommandLen = currentCommandLen;
+    currentCommandLen = 0;
+  }
+  if (currentCommand[0] == 'G') {
+    cursorPos = file.size;
+    offset.target = (GetPageHeight() - rect.height);
+    visibleCommandLen = currentCommandLen;
+    currentCommandLen = 0;
+  }
+
   if (currentCommandLen == 2 && currentCommand[0] == 't' && currentCommand[1] == 't') {
     PostQuitMessage(0);
     isRunning = 0;
@@ -260,52 +244,12 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     } else if (mode == Normal) {
       if (wParam == VK_ESCAPE)
         ClearCommand();
+      else if (IsKeyPressed(VK_CONTROL) && wParam == 'D') {
+        offset.target += (float)rect.height / 2.0f;
+      } else if (IsKeyPressed(VK_CONTROL) && wParam == 'U') {
+        offset.target -= (float)rect.height / 2.0f;
+      }
     }
-    /*if (mode == Normal) {
-      if (wParam == VK_ESCAPE) {
-        PostQuitMessage(0);
-        isRunning = 0;
-      }
-      if (wParam == VK_RETURN) {
-        InsertCharAtCursor('\n');
-        isSaved = 0;
-      }
-      if (wParam == 'I') {
-        mode = Insert;
-        isJustEnteredInsert = 1;
-      }
-      if (wParam == VK_BACK) {
-        RemoveCurrentChar();
-        isSaved = 0;
-      }
-      if (wParam == 'S' &&
-    IsKeyPressed(VK_CONTROL))
-        SaveFile();
-      if (wParam == 'J')
-        MoveDown();
-      if (wParam == 'K')
-        MoveUp();
-      if (wParam == 'W')
-        JumpWordForward();
-      if (wParam == 'B')
-        JumpWordBackward();
-      if (wParam == 'L')
-        cursorPos++;
-      if (wParam == 'H')
-        cursorPos--;
-    } else if (mode == Insert) {
-      if (wParam == VK_RETURN) {
-        InsertCharAtCursor('\n');
-        isSaved = 0;
-      }
-      if (wParam == VK_BACK) {
-        RemoveCurrentChar();
-        isSaved = 0;
-      }
-      if (wParam == VK_ESCAPE)
-        mode = Normal;
-    }
-    */
     break;
   case WM_DESTROY:
     PostQuitMessage(0);
@@ -359,9 +303,6 @@ void PaintRect(i32 x, i32 y, i32 width, i32 height, u32 color) {
   }
 }
 
-FontData fontD;
-Rect rect = {0};
-
 void DrawFooter() {
   char *label = filePath;
   int padding = 2;
@@ -394,14 +335,15 @@ void Draw() {
   for (i32 i = 0; i < canvas.width * canvas.height; i++)
     canvas.pixels[i] = colorsBg;
 
+  i32 padding = 10;
   rect.x = 0;
   rect.y = 0;
   rect.width = width;
   rect.height = height;
-  i32 padding = 10;
 
+  i32 startY = padding - (i32)offset.current;
   i32 x = padding;
-  i32 y = padding;
+  i32 y = startY;
 
   u32 cursorColor = mode == Normal ? colorsCursorInsert : colorsCursorNormal;
   CursorPos cursor = GetCursorPosition();
@@ -433,24 +375,6 @@ void Draw() {
                 &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
 }
 
-StringBuffer ReadFileIntoDoubledSizedBuffer(char *path) {
-  u32 fileSize = GetMyFileSize(path);
-  StringBuffer res = {.capacity = fileSize * 2, .size = fileSize, .content = 0};
-  res.content = VirtualAllocateMemory(res.capacity);
-  ReadFileInto(path, fileSize, res.content);
-
-  // removing windows new lines
-  // delimeters, assuming no two CR are
-  // next to each other
-  for (int i = 0; i < fileSize; i++) {
-    if (*(res.content + i) == '\r')
-      RemoveCharAt(&res, i);
-  }
-
-  PlaceLineEnd(&res);
-  return res;
-}
-
 inline i64 EllapsedMs(i64 start) {
   return (i64)((f32)(GetPerfCounter() - start) * 1000.0f / (f32)GetPerfFrequency());
 }
@@ -465,8 +389,10 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
 
   dc = GetDC(window);
   file = ReadFileIntoDoubledSizedBuffer(filePath);
+  currentFile = &file;
 
   InitFontSystem();
+  InitAnimations();
   Arena fontArena = CreateArena(500 * 1024);
   InitFont(&fontD, "Consolas", 14, &fontArena);
   i64 startCounter = GetPerfCounter();
@@ -478,9 +404,11 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
     }
 
     Draw();
-    Sleep(10);
+    // Sleep(10);
     i64 endCounter = GetPerfCounter();
-    appTimeMs += ((f32)(endCounter - startCounter) * 1000.0f / (f32)GetPerfFrequency());
+    float deltaMs = ((f32)(endCounter - startCounter) * 1000.0f / (f32)GetPerfFrequency());
+    UpdateSpring(&offset, deltaMs / 1000.0f);
+    appTimeMs += deltaMs;
     startCounter = endCounter;
   }
   return 0;
