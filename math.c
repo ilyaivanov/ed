@@ -21,3 +21,10 @@ float Clamp(float val, float min, float max) {
     return max;
   return val;
 }
+inline i32 RoundI32(f32 v)
+{
+    if (v < 0)
+        return (i32)(v - 0.5);
+    else
+        return (i32)(v + 0.5);
+}
