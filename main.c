@@ -7,13 +7,14 @@
 #include <math.h>
 
 // u32 colorsBg = 0x0F1419;
-u32 colorsBg = 0x050505;
-u32 colorsFont = 0xE6E1CF;
+u32 colorsBg = 0x121212;
+u32 colorsFont = 0xE6E6E6;
+u32 colorsFooter = 0x1D1D1D;
 
-u32 colorsCursorNormal = 0x880000;
-u32 colorsCursorInsert = 0x008800;
-u32 colorsCursorLineNormal = 0x101510;
-u32 colorsCursorLineInsert = 0x151010;
+u32 colorsCursorNormal = 0xFFDC32;
+u32 colorsCursorInsert = 0xFC2837;
+u32 colorsCursorLineNormal = 0x3F370E;
+u32 colorsCursorLineInsert = 0x3D2425;
 
 u32 colorsScrollbar = 0x222222;
 
@@ -41,6 +42,7 @@ i32 currentCommandLen;
 i32 visibleCommandLen;
 FontData font;
 
+i32 lineHeightPx;
 f32 lineHeight = 1.1;
 i32 fontSize = 14;
 char *fontName = "Consolas";
@@ -82,15 +84,15 @@ i32 GetPageHeight() {
     if (buffer.file.content[i] == '\n')
       rows++;
   }
-  return rows * font.charHeight;
+  return rows * lineHeightPx;
 }
 
 void SetCursorPosition(i32 v) {
   buffer.cursor = Clampi32(v, 0, buffer.file.size);
   CursorPos cursor = GetCursorPosition();
-  // offset.target = 200;
-  float lineToLookAhead = 5.0f * font.charHeight;
-  float cursorPos = cursor.line * font.charHeight;
+
+  float lineToLookAhead = 5.0f * lineHeightPx;
+  float cursorPos = cursor.line * lineHeightPx;
   float maxScroll = GetPageHeight() - textRect.height;
   if ((offset.target + textRect.height - lineToLookAhead) < cursorPos)
     offset.target = Clamp(cursorPos - (float)textRect.height / 2.0f, 0, maxScroll);
@@ -141,10 +143,46 @@ void MoveRight() {
 }
 
 void AppendCharIntoCommand(char ch) {
-
   currentCommand[currentCommandLen++] = ch;
   visibleCommandLen = 0;
+  if (currentCommand[0] == 'd') {
+    if (currentCommandLen == 2 && currentCommand[1] == 'W') {
+      int from = buffer.cursor;
+      int to = JumpWordWithPunctuationForward(&buffer) - 1;
+      RemoveChars(&buffer.file, from, to);
+      visibleCommandLen = currentCommandLen;
+      currentCommandLen = 0;
+    }
+    if (currentCommandLen == 2 && currentCommand[1] == 'w') {
+      int from = buffer.cursor;
+      int to = JumpWordForward(&buffer) - 1;
+      RemoveChars(&buffer.file, from, to);
+      visibleCommandLen = currentCommandLen;
+      currentCommandLen = 0;
+    }
+  }
+  if (currentCommand[0] == 'A') {
+    buffer.cursor = FindLineStart(buffer.cursor);
+    while (buffer.cursor < buffer.file.size && IsWhitespace(buffer.file.content[buffer.cursor]))
+      buffer.cursor++;
+
+    mode = Insert;
+    visibleCommandLen = currentCommandLen;
+    currentCommandLen = 0;
+  }
+  if (currentCommand[0] == 'I') {
+    buffer.cursor = FindLineEnd(buffer.cursor);
+    mode = Insert;
+    visibleCommandLen = currentCommandLen;
+    currentCommandLen = 0;
+  }
   if (currentCommand[0] == 'i') {
+    mode = Insert;
+    visibleCommandLen = currentCommandLen;
+    currentCommandLen = 0;
+  }
+  if (currentCommand[0] == 'a') {
+    buffer.cursor = MaxI32(buffer.cursor - 1, 0);
     mode = Insert;
     visibleCommandLen = currentCommandLen;
     currentCommandLen = 0;
@@ -228,7 +266,7 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
         AppendCharIntoCommand(ch);
       else if (mode == Insert) {
         if (ch < MAX_CHAR_CODE && ch >= ' ')
-          InsertCharAtCursor(&buffer,ch);
+          InsertCharAtCursor(&buffer, ch);
         isSaved = 0;
       }
     }
@@ -238,12 +276,12 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
       if (wParam == VK_ESCAPE)
         mode = Normal;
       if (wParam == VK_RETURN)
-        InsertCharAtCursor(&buffer,'\n');
+        InsertCharAtCursor(&buffer, '\n');
       else if (wParam == 'B' && IsKeyPressed(VK_CONTROL))
         RemoveCurrentChar();
     } else if (mode == Normal) {
       if (wParam == VK_RETURN)
-        InsertCharAtCursor(&buffer,'\n');
+        InsertCharAtCursor(&buffer, '\n');
       if (wParam == VK_ESCAPE)
         ClearCommand();
       else if (wParam == VK_F11) {
@@ -314,7 +352,7 @@ i32 footerPadding = 2;
 void DrawFooter() {
   char *label = filePath;
   int len = strlen(label);
-  PaintRect(footerRect.x, footerRect.y, footerRect.width, footerRect.height, 0x202020);
+  PaintRect(footerRect.x, footerRect.y, footerRect.width, footerRect.height, colorsFooter);
   int x = footerPadding;
   int y = footerRect.y;
   while (*label) {
@@ -367,9 +405,8 @@ void Draw() {
   i32 x = padding;
   i32 y = startY;
 
-  u32 cursorColor = mode == Normal ? colorsCursorInsert : colorsCursorNormal;
+  u32 cursorColor = mode == Normal ? colorsCursorNormal : colorsCursorInsert;
   CursorPos cursor = GetCursorPosition();
-  i32 lineHeightPx = RoundI32((f32)font.charHeight * lineHeight);
   i32 cursorX = x + font.charWidth * cursor.lineOffset;
   i32 cursorY = y + lineHeightPx * cursor.line;
 
@@ -385,10 +422,11 @@ void Draw() {
       x = padding;
       y += lineHeightPx;
     } else if (ch < MAX_CHAR_CODE && ch >= ' ') {
-      CopyMonochromeTextureRectTo(&canvas, &textRect, &font.textures[ch], x, charY, colorsFont);
+      u32 charColor = i == buffer.cursor ? colorsBg : colorsFont;
+      CopyMonochromeTextureRectTo(&canvas, &textRect, &font.textures[ch], x, charY, charColor);
       x += font.charWidth;
     } else {
-      PaintRect(x, charY, font.charWidth, font.charHeight, 0xff0000);
+      PaintRect(x, charY, font.charWidth, lineHeightPx, 0xff0000);
       x += font.charWidth;
     }
   }
@@ -418,6 +456,7 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
   InitAnimations();
   Arena fontArena = CreateArena(500 * 1024);
   InitFont(&font, fontName, fontSize, &fontArena);
+  lineHeightPx = RoundI32((f32)font.charHeight * lineHeight);
   i64 startCounter = GetPerfCounter();
   while (isRunning) {
     MSG msg;

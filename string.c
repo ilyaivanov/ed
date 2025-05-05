@@ -42,6 +42,18 @@ i32 FindLineEnd(i32 pos) {
   return pos;
 }
 
+void RemoveChars(StringBuffer *string, int from, int to) {
+  // Calculate the number of characters to shift
+  char *content = string->content;
+  int num_to_shift = string->size - (to + 1);
+
+  // Use memmove to shift the remaining characters
+  memmove(content + from, content + to + 1, num_to_shift);
+
+  // Update size after removing the characters
+  string->size -= (to - from + 1);
+}
+
 StringBuffer ReadFileIntoDoubledSizedBuffer(char *path) {
   u32 fileSize = GetMyFileSize(path);
   char *file = VirtualAllocateMemory(fileSize);

@@ -1,4 +1,5 @@
 #pragma once
+
 #include "string.c"
 
 typedef struct Buffer {
@@ -40,7 +41,7 @@ i32 JumpWordWithPunctuationForward(Buffer *buffer) {
 
 i32 JumpWordWithPunctuationBackward(Buffer *buffer) {
   char *text = buffer->file.content;
-  i32 pos = buffer->cursor;
+  i32 pos = MaxI32(buffer->cursor - 1, 0);
   while (pos > 0 && IsWhitespace(text[pos]))
     pos--;
 

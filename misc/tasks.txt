@@ -9,9 +9,43 @@ OverallProgress
   Folds
   Folder Explorer
 
-Other
-  Shell
 
 
 
 Timeline
+
+05.05 Monday
+  - Use proper rect for footer and text
+  - Line height 
+  - Insert mode actions (remove char)
+  - w b 
+  - i a I a
+
+Week 1
+04.05 Sunday  
+  - Cleanup and commit into git 
+  - Added gg and G 
+  - Scroll offset with animation
+  - Autoscroll
+  - Fullscreen mode
+
+03.05 Saturday  
+  - W B jumping words back and forth
+  - Command builder
+
+
+02.05 Friday
+  - Learning vim
+  - Wrote an app to show a windows with a label
+
+
+
+
+Things I use
+  - d y c C S a i A I w b W B ib a" a( a{ r R u C-r
+  - o O 
+
+Things I've implemented
+  - hjkl w b W B
+  - gg G
+  - dw dW
