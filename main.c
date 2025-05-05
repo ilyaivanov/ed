@@ -17,15 +17,19 @@ u32 colorsCursorLineInsert = 0x151010;
 
 u32 colorsScrollbar = 0x222222;
 
+Rect textRect = {0};
+Rect footerRect = {0};
+Rect screen = {0};
+
 int isRunning = 1;
 int isFullscreen = 0;
-u32 height;
-u32 width;
 Spring offset;
+
 typedef enum Mode { Normal, Insert } Mode;
 f32 appTimeMs = 0;
 char *filePath = "..\\vim.c";
 Mode mode = Normal;
+
 StringBuffer file;
 BITMAPINFO bitmapInfo;
 MyBitmap canvas;
@@ -35,9 +39,6 @@ char currentCommand[512];
 i32 currentCommandLen;
 i32 visibleCommandLen;
 FontData font;
-Rect textRect = {0};
-Rect footerRect = {0};
-Rect screen = {0};
 
 f32 lineHeight = 1.1;
 i32 fontSize = 14;
@@ -249,20 +250,23 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     isRunning = 0;
     break;
   case WM_SIZE:
-    width = LOWORD(lParam);
-    height = HIWORD(lParam);
+    screen.width = LOWORD(lParam);
+    screen.height = HIWORD(lParam);
 
     bitmapInfo.bmiHeader.biSize = sizeof(bitmapInfo.bmiHeader);
     bitmapInfo.bmiHeader.biBitCount = 32;
-    bitmapInfo.bmiHeader.biWidth = width;
-    bitmapInfo.bmiHeader.biHeight = -height;
+    bitmapInfo.bmiHeader.biWidth = screen.width;
+    bitmapInfo.bmiHeader.biHeight = -screen.height;
     // makes rows go down, instead of
     // going up by default
     bitmapInfo.bmiHeader.biPlanes = 1;
     bitmapInfo.bmiHeader.biCompression = BI_RGB;
 
-    canvas.width = width;
-    canvas.height = height;
+    canvas.width = screen.width;
+    canvas.height = screen.height;
+    if (canvas.pixels)
+      VirtualFreeMemory(canvas.pixels);
+
     canvas.pixels = VirtualAllocateMemory(canvas.width * canvas.height * 4);
     dc = GetDC(window);
   }
@@ -340,11 +344,7 @@ void Draw() {
   for (i32 i = 0; i < canvas.width * canvas.height; i++)
     canvas.pixels[i] = colorsBg;
 
-  screen.x = 0;
-  screen.y = 0;
-  screen.width = width;
-  screen.height = height;
-  footerRect.width = width;
+  footerRect.width = screen.width;
   int footerHeight = font.charHeight + footerPadding * 2;
   footerRect.height = footerHeight;
   footerRect.y = screen.height - footerRect.height;
@@ -384,7 +384,8 @@ void Draw() {
 
   DrawFooter();
   DrawScrollBar();
-  StretchDIBits(dc, 0, 0, width, height, 0, 0, width, height, canvas.pixels, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+  StretchDIBits(dc, 0, 0, screen.width, screen.height, 0, 0, screen.width, screen.height, canvas.pixels, &bitmapInfo,
+                DIB_RGB_COLORS, SRCCOPY);
 }
 
 inline i64 EllapsedMs(i64 start) {

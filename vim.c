@@ -1,16 +1,18 @@
 #pragma once
 #include "string.c"
 
-char whitespaceChars[] = {' ', '\n'};
+typedef struct Buffer {
+  StringBuffer file;
+  i32 cursor;
+
+  i32 cursorLine;
+  i32 cursorCol;
+} Buffer;
+
 u32 IsWhitespace(char ch) {
-  for (i32 i = 0; i < ArrayLength(whitespaceChars); i++) {
-    if (whitespaceChars[i] == ch)
-      return 1;
-  }
-
-  return 0;
+  return ch == ' ' || ch == '\n';
 }
-
+//;;;;;;;;;; abc ;;;abc;;; abc;;;
 i32 JumpWordWithPunctuationForward(StringBuffer *file, i32 currentPos) {
   char *text = file->content;
   i32 pos = currentPos;
@@ -35,3 +37,5 @@ i32 JumpWordWithPunctuationBackward(StringBuffer *file, i32 currentPos) {
 
   return pos;
 }
+
+
