@@ -36,7 +36,9 @@ char currentCommand[512];
 i32 currentCommandLen;
 i32 visibleCommandLen;
 FontData fontD;
-Rect rect = {0};
+Rect textRect = {0};
+Rect footerRect = {0};
+Rect screen = {0};
 
 typedef struct CursorPos {
   i32 global;
@@ -70,7 +72,7 @@ CursorPos GetCursorPosition() {
 }
 
 i32 GetPageHeight() {
-  int rows = 1;
+  int rows = 2;
   for (i32 i = 0; i < file.size; i++) {
     if (file.content[i] == '\n')
       rows++;
@@ -84,11 +86,11 @@ void SetCursorPosition(i32 v) {
   // offset.target = 200;
   float lineToLookAhead = 5.0f * fontD.charHeight;
   float cursorPos = cursor.line * fontD.charHeight;
-  float maxScroll = GetPageHeight() - rect.height;
-  if ((offset.target + rect.height - lineToLookAhead) < cursorPos)
-    offset.target = Clamp(cursorPos - (float)rect.height / 2.0f, 0, maxScroll);
+  float maxScroll = GetPageHeight() - textRect.height;
+  if ((offset.target + textRect.height - lineToLookAhead) < cursorPos)
+    offset.target = Clamp(cursorPos - (float)textRect.height / 2.0f, 0, maxScroll);
   else if ((offset.target + lineToLookAhead) > cursorPos)
-    offset.target = Clamp(cursorPos - (float)rect.height / 2.0f, 0, maxScroll);
+    offset.target = Clamp(cursorPos - (float)textRect.height / 2.0f, 0, maxScroll);
 }
 
 void MoveDown() {
@@ -211,7 +213,7 @@ void AppendCharIntoCommand(char ch) {
   }
   if (currentCommand[0] == 'G') {
     cursorPos = file.size;
-    offset.target = (GetPageHeight() - rect.height);
+    offset.target = (GetPageHeight() - textRect.height);
     visibleCommandLen = currentCommandLen;
     currentCommandLen = 0;
   }
@@ -260,9 +262,9 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
         isFullscreen = !isFullscreen;
         SetFullscreen(window, isFullscreen);
       } else if (IsKeyPressed(VK_CONTROL) && wParam == 'D') {
-        offset.target += (float)rect.height / 2.0f;
+        offset.target += (float)textRect.height / 2.0f;
       } else if (IsKeyPressed(VK_CONTROL) && wParam == 'U') {
-        offset.target -= (float)rect.height / 2.0f;
+        offset.target -= (float)textRect.height / 2.0f;
       }
     }
     break;
@@ -317,37 +319,35 @@ void PaintRect(i32 x, i32 y, i32 width, i32 height, u32 color) {
     }
   }
 }
-
+i32 footerPadding = 2;
 void DrawFooter() {
   char *label = filePath;
-  int padding = 2;
   int len = strlen(label);
-  int footerHeight = fontD.charHeight + padding * 2;
-  PaintRect(0, rect.height - footerHeight, rect.width, footerHeight, 0x202020);
-  int x = padding;
-  int y = rect.height - fontD.charHeight - padding;
+  PaintRect(footerRect.x, footerRect.y, footerRect.width, footerRect.height, 0x202020);
+  int x = footerPadding;
+  int y = footerRect.y;
   while (*label) {
-    CopyMonochromeTextureRectTo(&canvas, &rect, &fontD.textures[*label], x, y, 0xffffff);
+    CopyMonochromeTextureRectTo(&canvas, &footerRect, &fontD.textures[*label], x, y, 0xffffff);
     x += fontD.charWidth;
     label++;
   }
   if (!isSaved)
-    CopyMonochromeTextureRectTo(&canvas, &rect, &fontD.textures['*'], x, y, 0xffffff);
+    CopyMonochromeTextureRectTo(&canvas, &footerRect, &fontD.textures['*'], x, y, 0xffffff);
 
   int charsToShow = currentCommandLen > 0 ? currentCommandLen : visibleCommandLen;
-  int commandX = rect.width / 2 - (charsToShow * fontD.charWidth) / 2;
+  int commandX = footerRect.width / 2 - (charsToShow * fontD.charWidth) / 2;
   for (int i = 0; i < charsToShow; i++) {
     u32 color = currentCommandLen > 0 ? 0xffffff : 0xbbbbbb;
-    CopyMonochromeTextureRectTo(&canvas, &rect, &fontD.textures[currentCommand[i]], commandX, y, color);
+    CopyMonochromeTextureRectTo(&canvas, &footerRect, &fontD.textures[currentCommand[i]], commandX, y, color);
     commandX += fontD.charWidth;
   }
 }
 
 void DrawScrollBar() {
-  f32 pageHeight =(f32) GetPageHeight();
+  f32 pageHeight = (f32)GetPageHeight();
   float scrollbarWidth = 10;
-  if (rect.height < pageHeight) {
-    f32 height = (f32)rect.height;
+  if (textRect.height < pageHeight) {
+    f32 height = (f32)textRect.height;
     f32 scrollOffset = (f32)offset.current;
 
     f32 scrollbarHeight = (height * height) / pageHeight;
@@ -356,7 +356,7 @@ void DrawScrollBar() {
     f32 maxScrollY = height - scrollbarHeight;
     f32 scrollY = lerp(0, maxScrollY, scrollOffset / maxOffset);
 
-    PaintRect(rect.x + rect.width - scrollbarWidth, rect.y + scrollY, scrollbarWidth, (i32)scrollbarHeight,
+    PaintRect(textRect.x + textRect.width - scrollbarWidth, textRect.y + scrollY, scrollbarWidth, (i32)scrollbarHeight,
               colorsScrollbar);
   }
 }
@@ -364,12 +364,18 @@ void Draw() {
   for (i32 i = 0; i < canvas.width * canvas.height; i++)
     canvas.pixels[i] = colorsBg;
 
-  i32 padding = 10;
-  rect.x = 0;
-  rect.y = 0;
-  rect.width = width;
-  rect.height = height;
+  screen.x = 0;
+  screen.y = 0;
+  screen.width = width;
+  screen.height = height;
+  footerRect.width = width;
+  int footerHeight = fontD.charHeight + footerPadding * 2;
+  footerRect.height = footerHeight;
+  footerRect.y = screen.height - footerRect.height;
+  textRect.width = screen.width;
+  textRect.height = screen.height - footerRect.height;
 
+  i32 padding = 10;
   i32 startY = padding - (i32)offset.current;
   i32 x = padding;
   i32 y = startY;
@@ -380,7 +386,7 @@ void Draw() {
   i32 cursorY = y + fontD.charHeight * cursor.line;
 
   u32 lineColor = mode == Normal ? colorsCursorLineNormal : colorsCursorLineInsert;
-  PaintRect(0, cursorY, rect.width, fontD.charHeight, lineColor);
+  PaintRect(0, cursorY, textRect.width, fontD.charHeight, lineColor);
   PaintRect(cursorX, cursorY, fontD.charWidth, fontD.charHeight, cursorColor);
 
   for (i32 i = 0; i < file.size; i++) {
@@ -390,7 +396,7 @@ void Draw() {
       x = padding;
       y += fontD.charHeight;
     } else if (ch < MAX_CHAR_CODE && ch >= ' ') {
-      CopyMonochromeTextureRectTo(&canvas, &rect, &fontD.textures[ch], x, y, colorsFont);
+      CopyMonochromeTextureRectTo(&canvas, &textRect, &fontD.textures[ch], x, y, colorsFont);
       x += fontD.charWidth;
     } else {
       PaintRect(x, y, fontD.charWidth, fontD.charHeight, 0xff0000);
