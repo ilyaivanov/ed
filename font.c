@@ -28,7 +28,7 @@ u8 *ArenaPush(Arena *arena, i32 size) {
 
 void ArenaClear(Arena *arena) { arena->bytesAllocated = 0; }
 
-#define MAX_CHAR_CODE 126
+#define MAX_CHAR_CODE 127
 
 void InitBitmapInfo(BITMAPINFO *bitmapInfo, u32 width, u32 height) {
   bitmapInfo->bmiHeader.biSize = sizeof(bitmapInfo->bmiHeader);

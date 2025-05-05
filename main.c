@@ -169,6 +169,16 @@ void AppendCharIntoCommand(char ch) {
     visibleCommandLen = currentCommandLen;
     currentCommandLen = 0;
   }
+  if (currentCommand[0] == 'w') {
+    SetCursorPosition(JumpWordForward(&buffer));
+    visibleCommandLen = currentCommandLen;
+    currentCommandLen = 0;
+  }
+  if (currentCommand[0] == 'b') {
+    SetCursorPosition(JumpWordBackward(&buffer));
+    visibleCommandLen = currentCommandLen;
+    currentCommandLen = 0;
+  }
   if (currentCommand[0] == 'W') {
     SetCursorPosition(JumpWordWithPunctuationForward(&buffer));
     visibleCommandLen = currentCommandLen;
