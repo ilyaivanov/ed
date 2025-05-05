@@ -21,16 +21,17 @@ Rect textRect = {0};
 Rect footerRect = {0};
 Rect screen = {0};
 
+Buffer buffer;
+char *filePath = "..\\vim.c";
+
 int isRunning = 1;
 int isFullscreen = 0;
 Spring offset;
 
 typedef enum Mode { Normal, Insert } Mode;
 f32 appTimeMs = 0;
-char *filePath = "..\\vim.c";
 Mode mode = Normal;
 
-StringBuffer file;
 BITMAPINFO bitmapInfo;
 MyBitmap canvas;
 HDC dc;
@@ -54,9 +55,9 @@ CursorPos GetCursorPosition() {
   CursorPos res = {0};
   res.global = -1;
 
-  i32 pos = cursorPos;
-  i32 textSize = file.size;
-  char *text = file.content;
+  i32 pos = buffer.cursor;
+  i32 textSize = buffer.file.size;
+  char *text = buffer.file.content;
 
   if (pos >= 0 && pos <= textSize) {
     res.global = pos;
@@ -77,15 +78,15 @@ CursorPos GetCursorPosition() {
 
 i32 GetPageHeight() {
   int rows = 2;
-  for (i32 i = 0; i < file.size; i++) {
-    if (file.content[i] == '\n')
+  for (i32 i = 0; i < buffer.file.size; i++) {
+    if (buffer.file.content[i] == '\n')
       rows++;
   }
   return rows * font.charHeight;
 }
 
 void SetCursorPosition(i32 v) {
-  cursorPos = Clampi32(v, 0, file.size);
+  buffer.cursor = Clampi32(v, 0, buffer.file.size);
   CursorPos cursor = GetCursorPosition();
   // offset.target = 200;
   float lineToLookAhead = 5.0f * font.charHeight;
@@ -98,8 +99,8 @@ void SetCursorPosition(i32 v) {
 }
 
 void MoveDown() {
-  i32 next = FindLineEnd(cursorPos);
-  if (next != file.size) {
+  i32 next = FindLineEnd(buffer.cursor);
+  if (next != buffer.file.size) {
     i32 nextNextLine = FindLineEnd(next + 1);
     CursorPos cursor = GetCursorPosition();
     SetCursorPosition(MinI32(next + cursor.lineOffset + 1, nextNextLine));
@@ -107,7 +108,7 @@ void MoveDown() {
 }
 
 void MoveUp() {
-  i32 prev = FindLineStart(cursorPos);
+  i32 prev = FindLineStart(buffer.cursor);
   if (prev != 0) {
     i32 prevPrevLine = FindLineStart(prev - 1);
     CursorPos cursor = GetCursorPosition();
@@ -118,14 +119,14 @@ void MoveUp() {
 }
 
 void RemoveCurrentChar() {
-  if (cursorPos > 0) {
-    RemoveCharAt(cursorPos - 1);
-    cursorPos--;
+  if (buffer.cursor > 0) {
+    RemoveCharAt(buffer.cursor - 1);
+    buffer.cursor--;
   }
 }
 
 void SaveFile() {
-  WriteMyFile(filePath, file.content, file.size);
+  WriteMyFile(filePath, buffer.file.content, buffer.file.size);
   isSaved = 1;
 }
 
@@ -133,10 +134,10 @@ inline BOOL IsKeyPressed(u32 code) {
   return (GetKeyState(code) >> 15) & 1;
 }
 void MoveLeft() {
-  cursorPos = MaxI32(cursorPos - 1, 0);
+  buffer.cursor = MaxI32(buffer.cursor - 1, 0);
 }
 void MoveRight() {
-  cursorPos = MinI32(cursorPos + 1, file.size);
+  buffer.cursor = MinI32(buffer.cursor + 1, buffer.file.size);
 }
 
 void AppendCharIntoCommand(char ch) {
@@ -169,23 +170,23 @@ void AppendCharIntoCommand(char ch) {
     currentCommandLen = 0;
   }
   if (currentCommand[0] == 'W') {
-    SetCursorPosition(JumpWordWithPunctuationForward(&file, cursorPos));
+    SetCursorPosition(JumpWordWithPunctuationForward(&buffer));
     visibleCommandLen = currentCommandLen;
     currentCommandLen = 0;
   }
   if (currentCommand[0] == 'B') {
-    SetCursorPosition(JumpWordWithPunctuationBackward(&file, cursorPos));
+    SetCursorPosition(JumpWordWithPunctuationBackward(&buffer));
     visibleCommandLen = currentCommandLen;
     currentCommandLen = 0;
   }
   if (currentCommandLen == 2 && currentCommand[0] == 'g' && currentCommand[1] == 'g') {
-    cursorPos = 0;
+    buffer.cursor = 0;
     offset.target = 0;
     visibleCommandLen = currentCommandLen;
     currentCommandLen = 0;
   }
   if (currentCommand[0] == 'G') {
-    cursorPos = file.size;
+    buffer.cursor = buffer.file.size;
     offset.target = (GetPageHeight() - textRect.height);
     visibleCommandLen = currentCommandLen;
     currentCommandLen = 0;
@@ -217,7 +218,7 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
         AppendCharIntoCommand(ch);
       else if (mode == Insert) {
         if (ch < MAX_CHAR_CODE && ch >= ' ')
-          InsertCharAtCursor(ch);
+          InsertCharAtCursor(&buffer,ch);
         isSaved = 0;
       }
     }
@@ -227,12 +228,12 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
       if (wParam == VK_ESCAPE)
         mode = Normal;
       if (wParam == VK_RETURN)
-        InsertCharAtCursor('\n');
+        InsertCharAtCursor(&buffer,'\n');
       else if (wParam == 'B' && IsKeyPressed(VK_CONTROL))
         RemoveCurrentChar();
     } else if (mode == Normal) {
       if (wParam == VK_RETURN)
-        InsertCharAtCursor('\n');
+        InsertCharAtCursor(&buffer,'\n');
       if (wParam == VK_ESCAPE)
         ClearCommand();
       else if (wParam == VK_F11) {
@@ -367,9 +368,9 @@ void Draw() {
   PaintRect(cursorX, cursorY, font.charWidth, lineHeightPx, cursorColor);
   i32 charShift = (lineHeightPx - font.charHeight) / 2;
 
-  for (i32 i = 0; i < file.size; i++) {
+  for (i32 i = 0; i < buffer.file.size; i++) {
     i32 charY = y + charShift;
-    char ch = file.content[i];
+    char ch = buffer.file.content[i];
     if (ch == '\n') {
       x = padding;
       y += lineHeightPx;
@@ -401,8 +402,8 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
   HWND window = OpenWindow(OnEvent, colorsBg, "Editor");
 
   dc = GetDC(window);
-  file = ReadFileIntoDoubledSizedBuffer(filePath);
-  currentFile = &file;
+  buffer.file = ReadFileIntoDoubledSizedBuffer(filePath);
+  currentFile = &buffer.file;
 
   InitAnimations();
   Arena fontArena = CreateArena(500 * 1024);

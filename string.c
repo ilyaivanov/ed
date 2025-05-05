@@ -8,7 +8,6 @@ typedef struct StringBuffer {
 } StringBuffer;
 
 StringBuffer *currentFile;
-i32 cursorPos = 0;
 
 inline void MoveBytesLeft(char *ptr, int length) {
   for (int i = 0; i < length - 1; i++) {
@@ -25,18 +24,6 @@ void RemoveCharAt(i32 at) {
   MoveBytesLeft(currentFile->content + at, currentFile->size - at);
   currentFile->size--;
   PlaceLineEnd();
-}
-
-void InsertCharAtCursor(char ch) {
-  i32 textSize = currentFile->size;
-  i32 pos = cursorPos;
-  char *text = currentFile->content;
-  memmove(text + pos + 1, text + pos, textSize - pos);
-
-  text[pos] = ch;
-
-  currentFile->size++;
-  cursorPos++;
 }
 
 i32 FindLineStart(i32 pos) {

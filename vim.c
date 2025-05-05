@@ -4,31 +4,28 @@
 typedef struct Buffer {
   StringBuffer file;
   i32 cursor;
-
-  i32 cursorLine;
-  i32 cursorCol;
 } Buffer;
 
 u32 IsWhitespace(char ch) {
   return ch == ' ' || ch == '\n';
 }
 //;;;;;;;;;; abc ;;;abc;;; abc;;;
-i32 JumpWordWithPunctuationForward(StringBuffer *file, i32 currentPos) {
-  char *text = file->content;
-  i32 pos = currentPos;
-  while (pos < file->size && !IsWhitespace(text[pos]))
+i32 JumpWordWithPunctuationForward(Buffer *buffer) {
+  char *text = buffer->file.content;
+  i32 size = buffer->file.size;
+  i32 pos = buffer->cursor;
+  while (pos < size && !IsWhitespace(text[pos]))
     pos++;
 
-  while (pos < file->size && IsWhitespace(text[pos]))
+  while (pos < size && IsWhitespace(text[pos]))
     pos++;
 
   return pos;
 }
 
-i32 JumpWordWithPunctuationBackward(StringBuffer *file, i32 currentPos) {
-  i32 pos = cursorPos == 0 ? 0 : cursorPos - 1;
-
-  char *text = file->content;
+i32 JumpWordWithPunctuationBackward(Buffer *buffer) {
+  char *text = buffer->file.content;
+  i32 pos = buffer->cursor;
   while (pos > 0 && IsWhitespace(text[pos]))
     pos--;
 
@@ -38,4 +35,15 @@ i32 JumpWordWithPunctuationBackward(StringBuffer *file, i32 currentPos) {
   return pos;
 }
 
+void InsertCharAtCursor(Buffer *buffer, char ch) {
+  i32 textSize = buffer->file.size;
+  i32 pos = buffer->cursor;
+  char *text = currentFile->content;
 
+  memmove(text + pos + 1, text + pos, textSize - pos);
+
+  text[pos] = ch;
+
+  buffer->file.size++;
+  buffer->cursor++;
+}
