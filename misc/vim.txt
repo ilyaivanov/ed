@@ -1,0 +1,191 @@
+Overall topics
+  Motions
+  Operators
+  Registers
+  Commands
+  Splits
+  NetRT
+
+
+
+Navigation
+  w b W B   - jump to start words forw\back, may contain punctuation
+  e ge E gE - jump to end words forw\back, may contain punctiation
+  0 ^ $     - start, formatted and end of the line 
+  gg G      - start end of file
+  H M L     - start middle end of the screen
+  5gg 5G    - go to line 5
+  %           move to a matching pair of character () {} []
+  }{        - jump to next\prev paragraph or func\block
+  zz zt zb  - center\top\bottom of the screen
+  ctrl+o ctrl+i - move back\forward in history
+  :jumps    - show all jumps
+  ctrl-6    - jump to alternate file
+  gj gk g^ g0 g$ - same movemenst as without g, but relative to wrapped lines
+
+
+gf - open a file under the cursor build.bat
+
+Automatic Marks
+  ``    - Position before the last jump within current file
+  `.    - Location of last change
+  `^    - Location of last insertion
+  `[    - Start of last change or yank
+  `]    - End of last change or yank
+  `<    - Start of last visual selection
+  `>    - End of last visual selection
+
+Insert
+  u ctrl+r  - undo\redo
+  I A       - append text before\after current line
+  a         - append text after the cursor
+  r         - replace a char
+  C-a, C-x  - increment and decrement a number
+  C-b       - remove one char
+  C-w       - remove one word
+  C-u       - remove one line 
+
+Visual
+  o - move cursor to another end of selection
+  gv - select last slection
+
+
+Search
+  /foo      - search for foo. Press enter in order enter search mode
+  /\<to\>   - search for a word to. I will ignore other words which inlcude to
+
+  :g/foo/d  - delete all lines including case-sensitive foo
+  :s/thee/the/gc - substitute all occurences on a line with prompt
+  :%s/thee/the/gc - substitute on a whole file with confirmations
+  :#,#s/old/new/g - substitute phrases between two line #'s type
+  n N       - go down and up in search entries
+
+  * #       - search for next\prev occurence of the word
+  :noh      - hide search results
+  :set ic   - ignore case
+  :set noic - no ignore case
+NOTE: If you want to ignore case for just one search command, use [\c](/\c)
+      in the phrase: /ignore\c <Enter>
+
+
+
+Splits
+  :split    - create horizontal split
+  :vertical - vertical split
+  :Vex :Sex - file explorer as a new split
+  ctrl-w o  - close other splits
+  ctrl-w q  - close current split
+  <C-w>=    - Equalize width and height of all windows
+  <C-w>_    - Maximize height of the active window
+  <C-w>|    - Maximize width of the active window
+  [N]<C-w>_ - Set active window height to [N] rows
+  [N]<C-w>| - Set active window width to [N] columns
+
+
+File Explorer
+  :e **/.c      - search for files with c extension
+  ctrl-d        - preview all options.
+  tab           - show autocomplete
+  ctrl-n ctrl-p - switch between options in tab autocomplete
+
+
+
+Commands
+  :!dir - execute command
+  :r  - read from file (:r !dir - paste content of the dir command)
+  :w  - write into file
+  :'<,'>:w - write selected text into a file
+
+
+Custom Shortcuts
+  <L>pv Vex
+  <L>w w
+  <L>f clang format current file
+  <L>n noh
+  <C-p> :Files
+  <L>pf :GFiles
+  <L>so source vim.init
+  <L>vb edit vim.init
+  <L>vv visual block mode
+
+Going              repeat  revert
+  {edit}           .       u
+  f{char}/t{char}  ;       ,
+  F{char}/T{char}  ;       ,
+  /pattern         n       N
+  ?pattern         n       N
+  :s/foo/bar       &       u
+  qx{changes}q     @x      u
+
+
+
+Vim Operators
+  c  change
+  d  delete
+  y  yank
+  g~ swap case
+  gu make lowercase
+  gU make uppercase
+  >  shift right
+  <  shift left
+  =  autoindent
+  !  Filter (motion) lines through an external program
+
+Vim Motions
+  f{char} - move to next {char}
+  t{char} - move until the next {Char}
+
+
+
+Practical Vim notes
+The Vim Way
+  1. Repeat last action via . "Meet the Dot Command"
+  2. Don't repeat yourself. Appending ; in a js example.
+  3. Take one step back, then three forward. Example of js formatting arg1+","+arg2
+    Repeat f{char} search forward via ; and backward ,
+  4. Act, Repeat, Reverse
+  5. Find and replace by hand
+  6. Meet the dot formula - one keystroke to move, one to execute
+  7. Pause with your brush off the page
+  8. Chunk your undos
+  9. Compose your edits
+  10. Use Counts to Do Simple Arithmetic
+  11. Don’t Count If You Can Repeat
+  12. Combine and Conquer
+    Operator + Motions = Action
+  13. make corrections instantly from insert mode
+    C-h delete back one char
+    C-w -deleta back one word
+    C-u delete to start of the line
+  14. Switch to normal mode. C-o for Insert Normal mode (one action).
+  15. paste from the register without leaving insert mode
+    <C-r>0 - paste from the register in the insert mode
+  16. Do back-of-the-envelope calculations in place
+    <C-r>= to insert calculation in INSERT mode
+  17. Insert Unusual Characters by Character Code
+  18. Insert Unusual Characters by Digraph
+  19. Overwrite Existing 2resdfu Replace Mode
+  20. Grok visual mode
+  21. Define a Visual Selection
+     v V <C-v> - char, line, block visual modes
+     gv - select last visual selection
+     o - go to the other end of the visual selection
+  22. Repeat Line-Wise Visual Commands
+  23. Prefer Operators to Visual Commands Where Possible
+  24. Edit Tabular Data with Visual-Block Mode
+  25. Change columns of text 
+  26. Append After a Ragged Visual Block
+  ...
+  48. Place hands on the home row
+  49. Move word-wise
+    b    b  p    w
+    prev current next
+      ge       e    e
+
+    word - sequence of letters, digits, and underscores, or as a sequence of other nonblank characters separated with whitespace
+    WORD - sequence of nonblank characters separated with whitespace
+
+    W    W     W     W   W
+    e.g. we're going too slow
+    wwww w ww  w     w   w
+ 
