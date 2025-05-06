@@ -49,6 +49,7 @@ char *fontName = "Consolas";
 
 typedef struct CursorPos {
   i32 global;
+
   i32 line;
   i32 lineOffset;
 } CursorPos;
@@ -166,6 +167,22 @@ void AppendCharIntoCommand(char ch) {
     while (buffer.cursor < buffer.file.size && IsWhitespace(buffer.file.content[buffer.cursor]))
       buffer.cursor++;
 
+    mode = Insert;
+    visibleCommandLen = currentCommandLen;
+    currentCommandLen = 0;
+  }
+  if (currentCommand[0] == 'O') {
+    i32 lineStart = FindLineStart(buffer.cursor);
+    InsertCharAt(&buffer, lineStart, '\n');
+    buffer.cursor = lineStart;
+    mode = Insert;
+    visibleCommandLen = currentCommandLen;
+    currentCommandLen = 0;
+  }
+  if (currentCommand[0] == 'o') {
+    i32 lineEnd = FindLineEnd(buffer.cursor);
+    InsertCharAt(&buffer, lineEnd, '\n');
+    buffer.cursor = lineEnd + 1;
     mode = Insert;
     visibleCommandLen = currentCommandLen;
     currentCommandLen = 0;

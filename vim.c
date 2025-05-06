@@ -98,9 +98,8 @@ i32 JumpWordForward(Buffer *buffer) {
   return pos;
 }
 
-void InsertCharAtCursor(Buffer *buffer, char ch) {
+void InsertCharAt(Buffer *buffer, i32 pos, char ch) {
   i32 textSize = buffer->file.size;
-  i32 pos = buffer->cursor;
   char *text = currentFile->content;
 
   memmove(text + pos + 1, text + pos, textSize - pos);
@@ -108,5 +107,11 @@ void InsertCharAtCursor(Buffer *buffer, char ch) {
   text[pos] = ch;
 
   buffer->file.size++;
+}
+
+void InsertCharAtCursor(Buffer *buffer, char ch) {
+  InsertCharAt(buffer, buffer->cursor, ch);
   buffer->cursor++;
 }
+void JumpParagraphDown(Buffer *buffer) {}
+void JumpParagraphUp(Buffer *buffer) {}
