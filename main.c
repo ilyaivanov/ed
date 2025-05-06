@@ -147,6 +147,14 @@ void AppendCharIntoCommand(char ch) {
   currentCommand[currentCommandLen++] = ch;
   visibleCommandLen = 0;
   if (currentCommand[0] == 'd') {
+    if (currentCommandLen == 2 && (currentCommand[1] == 'l' || currentCommand[1] == 'd')) {
+      int from = FindLineStart(buffer.cursor);
+      int to = FindLineEnd(buffer.cursor);
+      RemoveChars(&buffer.file, from, to);
+      buffer.cursor = MinI32(buffer.cursor, buffer.file.size);
+      visibleCommandLen = currentCommandLen;
+      currentCommandLen = 0;
+    }
     if (currentCommandLen == 2 && currentCommand[1] == 'W') {
       int from = buffer.cursor;
       int to = JumpWordWithPunctuationForward(&buffer) - 1;
