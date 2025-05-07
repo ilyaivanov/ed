@@ -35,7 +35,7 @@ nnoremap <leader>vv <C-v>
 nnoremap <leader>n :noh<CR>
 nnoremap <leader>r :silent update \| !misc\\build.bat<CR>
 "nnoremap <leader>f :silent update \| :silent !clang-format -i -style="{AllowShortFunctionsOnASingleLine:None, ColumnLimit: 120}" %<CR>
-nnoremap <leader>f :silent update \| :silent !clang-format --style="{AllowShortFunctionsOnASingleLine: \"Empty\", ColumnLimit: 100}" -i %<CR>
+nnoremap <leader>f :silent update \| :silent !clang-format --style="{AllowShortFunctionsOnASingleLine: \"Empty\", ColumnLimit: 100, PointerAlignment: \"Left\"}" -i %<CR>
 
 
 nnoremap <C-p> :Files<CR>

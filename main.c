@@ -5,6 +5,7 @@
 #include "win32.c"
 #include <math.h>
 
+HWND mainWindow;
 // u32 colorsBg = 0x0F1419;
 u32 colorsBg = 0x121212;
 u32 colorsFont = 0xE6E6E6;
@@ -25,7 +26,7 @@ Rect footerRect = {0};
 Rect screen = {0};
 
 Buffer buffer;
-char *filePath = "..\\vim.c";
+char* filePath = "..\\vim.c";
 
 int isRunning = 1;
 int isFullscreen = 0;
@@ -47,7 +48,7 @@ FontData font;
 i32 lineHeightPx;
 f32 lineHeight = 1.1;
 i32 fontSize = 16;
-char *fontName = "Consolas";
+char* fontName = "Consolas";
 
 typedef struct CursorPos {
   i32 global;
@@ -60,7 +61,7 @@ CursorPos GetPositionOffset(i32 pos) {
   res.global = -1;
 
   i32 textSize = buffer.size;
-  char *text = buffer.content;
+  char* text = buffer.content;
 
   if (pos >= 0 && pos <= textSize) {
     res.global = pos;
@@ -148,7 +149,7 @@ void MoveRight() {
 }
 
 i32 hasMatchedAnyCommand;
-i32 IsCommand(char *str) {
+i32 IsCommand(char* str) {
   i32 len = strlen(str);
   if (currentCommandLen == len) {
     for (i32 i = 0; i < len; i++) {
@@ -210,8 +211,8 @@ void AppendCharIntoCommand(char ch) {
 
   if (mode == Visual) {
     if (IsCommand("d")) {
-      u32 selectionLeft = MinI32(buffer.selectionStart, buffer.cursor);
-      u32 selectionRight = MaxI32(buffer.selectionStart, buffer.cursor);
+      i32 selectionLeft = MinI32(buffer.selectionStart, buffer.cursor);
+      i32 selectionRight = MaxI32(buffer.selectionStart, buffer.cursor);
       RemoveChars(&buffer, selectionLeft, selectionRight);
       buffer.cursor = MinI32(buffer.cursor, buffer.selectionStart);
       mode = Normal;
@@ -220,6 +221,12 @@ void AppendCharIntoCommand(char ch) {
       i32 temp = buffer.cursor;
       buffer.cursor = buffer.selectionStart;
       buffer.selectionStart = temp;
+    }
+    if (IsCommand("y")) {
+      i32 selectionLeft = MinI32(buffer.selectionStart, buffer.cursor);
+      i32 selectionRight = MaxI32(buffer.selectionStart, buffer.cursor);
+      ClipboardCopy(mainWindow, buffer.content + selectionLeft, selectionRight - selectionLeft + 1);
+      // mode = Normal;
     }
   } else if (mode == Normal) {
     if (IsCommand("dl") || IsCommand("dd")) {
@@ -292,6 +299,32 @@ void AppendCharIntoCommand(char ch) {
       }
     }
 
+    if (IsCommand("yy") || IsCommand("yl")) {
+      i32 start = FindLineStart(&buffer, buffer.cursor);
+      i32 end = FindLineEnd(&buffer, buffer.cursor);
+      ClipboardCopy(mainWindow, buffer.content + start, end - start + 1);
+    }
+    if (IsCommand("p")) {
+      i32 size = 0;
+      char* textFromClipboard = ClipboardPaste(mainWindow, &size);
+
+      InsertChars(&buffer, textFromClipboard, size, buffer.cursor + 1);
+      buffer.cursor = buffer.cursor + 1 + size;
+
+      if (textFromClipboard)
+        VirtualFreeMemory(textFromClipboard);
+    }
+
+    if (IsCommand("P")) {
+      i32 size = 0;
+      char* textFromClipboard = ClipboardPaste(mainWindow, &size);
+
+      InsertChars(&buffer, textFromClipboard, size, buffer.cursor);
+      buffer.cursor = buffer.cursor + size;
+
+      if (textFromClipboard)
+        VirtualFreeMemory(textFromClipboard);
+    }
     if (IsCommand("tt")) {
       PostQuitMessage(0);
       isRunning = 0;
@@ -384,7 +417,7 @@ void PaintRectAlpha(i32 x, i32 y, i32 width, i32 height, u32 color, f32 a) {
 
   for (i32 j = y0; j < y1; j++) {
     for (i32 i = x0; i < x1; i++) {
-      u32 *pixel = &canvas.pixels[j * canvas.width + i];
+      u32* pixel = &canvas.pixels[j * canvas.width + i];
       *pixel = AlphaBlendColors(*pixel, color, a);
     }
   }
@@ -404,7 +437,7 @@ void PaintRect(i32 x, i32 y, i32 width, i32 height, u32 color) {
 }
 i32 footerPadding = 2;
 void DrawFooter() {
-  char *label = filePath;
+  char* label = filePath;
   int len = strlen(label);
   PaintRect(footerRect.x, footerRect.y, footerRect.width, footerRect.height, colorsFooter);
   int x = footerPadding;
@@ -546,9 +579,9 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
 
   PreventWindowsDPIScaling();
 
-  HWND window = OpenWindow(OnEvent, colorsBg, "Editor");
+  mainWindow = OpenWindow(OnEvent, colorsBg, "Editor");
 
-  dc = GetDC(window);
+  dc = GetDC(mainWindow);
   buffer = ReadFileIntoDoubledSizedBuffer(filePath);
 
   InitAnimations();
