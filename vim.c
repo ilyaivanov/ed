@@ -5,6 +5,7 @@
 typedef struct Buffer {
   StringBuffer file;
   i32 cursor;
+  i32 selectionStart;
 } Buffer;
 
 u32 IsWhitespace(char ch) {
@@ -113,5 +114,37 @@ void InsertCharAtCursor(Buffer *buffer, char ch) {
   InsertCharAt(buffer, buffer->cursor, ch);
   buffer->cursor++;
 }
-void JumpParagraphDown(Buffer *buffer) {}
+
+i32 GetLineOffset(Buffer *buffer, i32 lineStart) {
+  i32 l = lineStart;
+  while (buffer->file.content[l] == ' ')
+    l++;
+  return l - lineStart;
+}
+void JumpParagraphDown(Buffer *buffer) {
+  i32 lineStart = FindLineStart(buffer->cursor);
+  i32 initialOffset = GetLineOffset(buffer, lineStart);
+  i32 currentOffset = initialOffset;
+
+  while (initialOffset < currentOffset) {
+  }
+}
 void JumpParagraphUp(Buffer *buffer) {}
+
+// TODO: what the fuck is this? what was in my head when I wrote this
+i32 GetLineLength(Buffer *text, i32 line) {
+  i32 currentLine = 0;
+  i32 currentLineLength = 0;
+  for (i32 i = 0; i < text->file.size; i++) {
+    if (text->file.content[i] == '\n') {
+      if (currentLine == line)
+        return currentLineLength + 1;
+
+      currentLine++;
+      currentLineLength = 0;
+    } else {
+      currentLineLength++;
+    }
+  }
+  return currentLineLength;
+}

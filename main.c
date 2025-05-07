@@ -13,9 +13,12 @@ u32 colorsFooter = 0x1D1D1D;
 
 u32 colorsCursorNormal = 0xFFDC32;
 u32 colorsCursorInsert = 0xFC2837;
+u32 colorsCursorVisual = 0x3E9FBE;
 u32 colorsCursorLineNormal = 0x3F370E;
 u32 colorsCursorLineInsert = 0x3D2425;
+u32 colorsCursorLineVisual = 0x202020;
 
+u32 colorsSelection = 0x253340;
 u32 colorsScrollbar = 0x222222;
 
 Rect textRect = {0};
@@ -29,7 +32,7 @@ int isRunning = 1;
 int isFullscreen = 0;
 Spring offset;
 
-typedef enum Mode { Normal, Insert } Mode;
+typedef enum Mode { Normal, Insert, Visual } Mode;
 f32 appTimeMs = 0;
 Mode mode = Normal;
 
@@ -44,7 +47,7 @@ FontData font;
 
 i32 lineHeightPx;
 f32 lineHeight = 1.1;
-i32 fontSize = 14;
+i32 fontSize = 16;
 char *fontName = "Consolas";
 
 typedef struct CursorPos {
@@ -53,12 +56,10 @@ typedef struct CursorPos {
   i32 line;
   i32 lineOffset;
 } CursorPos;
-
-CursorPos GetCursorPosition() {
+CursorPos GetPositionOffset(i32 pos) {
   CursorPos res = {0};
   res.global = -1;
 
-  i32 pos = buffer.cursor;
   i32 textSize = buffer.file.size;
   char *text = buffer.file.content;
 
@@ -77,6 +78,10 @@ CursorPos GetCursorPosition() {
     res.lineOffset = pos - lineStartedAt;
   }
   return res;
+}
+
+CursorPos GetCursorPosition() {
+  return GetPositionOffset(buffer.cursor);
 }
 
 i32 GetPageHeight() {
@@ -143,138 +148,141 @@ void MoveRight() {
   buffer.cursor = MinI32(buffer.cursor + 1, buffer.file.size);
 }
 
-void AppendCharIntoCommand(char ch) {
-  currentCommand[currentCommandLen++] = ch;
-  visibleCommandLen = 0;
-  if (currentCommand[0] == 'd') {
-    if (currentCommandLen == 2 && (currentCommand[1] == 'l' || currentCommand[1] == 'd')) {
-      int from = FindLineStart(buffer.cursor);
-      int to = FindLineEnd(buffer.cursor);
-      RemoveChars(&buffer.file, from, to);
-      buffer.cursor = MinI32(buffer.cursor, buffer.file.size);
-      visibleCommandLen = currentCommandLen;
-      currentCommandLen = 0;
+i32 hasMatchedAnyCommand;
+i32 IsCommand(char *str) {
+  i32 len = strlen(str);
+  if (currentCommandLen == len) {
+    for (i32 i = 0; i < len; i++) {
+      if (currentCommand[i] != str[i])
+        return 0;
     }
-    if (currentCommandLen == 2 && currentCommand[1] == 'W') {
-      int from = buffer.cursor;
-      int to = JumpWordWithPunctuationForward(&buffer) - 1;
-      RemoveChars(&buffer.file, from, to);
-      visibleCommandLen = currentCommandLen;
-      currentCommandLen = 0;
-    }
-    if (currentCommandLen == 2 && currentCommand[1] == 'w') {
-      int from = buffer.cursor;
-      int to = JumpWordForward(&buffer) - 1;
-      RemoveChars(&buffer.file, from, to);
-      visibleCommandLen = currentCommandLen;
-      currentCommandLen = 0;
-    }
+    hasMatchedAnyCommand = 1;
+    return 1;
   }
-  if (currentCommand[0] == 'A') {
-    buffer.cursor = FindLineStart(buffer.cursor);
-    while (buffer.cursor < buffer.file.size && IsWhitespace(buffer.file.content[buffer.cursor]))
-      buffer.cursor++;
-
-    mode = Insert;
-    visibleCommandLen = currentCommandLen;
-    currentCommandLen = 0;
-  }
-  if (currentCommand[0] == 'O') {
-    i32 lineStart = FindLineStart(buffer.cursor);
-    InsertCharAt(&buffer, lineStart, '\n');
-    buffer.cursor = lineStart;
-    mode = Insert;
-    visibleCommandLen = currentCommandLen;
-    currentCommandLen = 0;
-  }
-  if (currentCommand[0] == 'o') {
-    i32 lineEnd = FindLineEnd(buffer.cursor);
-    InsertCharAt(&buffer, lineEnd, '\n');
-    buffer.cursor = lineEnd + 1;
-    mode = Insert;
-    visibleCommandLen = currentCommandLen;
-    currentCommandLen = 0;
-  }
-  if (currentCommand[0] == 'I') {
-    buffer.cursor = FindLineEnd(buffer.cursor);
-    mode = Insert;
-    visibleCommandLen = currentCommandLen;
-    currentCommandLen = 0;
-  }
-  if (currentCommand[0] == 'i') {
-    mode = Insert;
-    visibleCommandLen = currentCommandLen;
-    currentCommandLen = 0;
-  }
-  if (currentCommand[0] == 'a') {
-    buffer.cursor = MaxI32(buffer.cursor - 1, 0);
-    mode = Insert;
-    visibleCommandLen = currentCommandLen;
-    currentCommandLen = 0;
-  }
-  if (currentCommand[0] == 'j') {
-    MoveDown();
-    visibleCommandLen = currentCommandLen;
-    currentCommandLen = 0;
-  }
-  if (currentCommand[0] == 'k') {
-    MoveUp();
-    visibleCommandLen = currentCommandLen;
-    currentCommandLen = 0;
-  }
-  if (currentCommand[0] == 'h') {
-    MoveLeft();
-    visibleCommandLen = currentCommandLen;
-    currentCommandLen = 0;
-  }
-  if (currentCommand[0] == 'l') {
-    MoveRight();
-    visibleCommandLen = currentCommandLen;
-    currentCommandLen = 0;
-  }
-  if (currentCommand[0] == 'w') {
-    SetCursorPosition(JumpWordForward(&buffer));
-    visibleCommandLen = currentCommandLen;
-    currentCommandLen = 0;
-  }
-  if (currentCommand[0] == 'b') {
-    SetCursorPosition(JumpWordBackward(&buffer));
-    visibleCommandLen = currentCommandLen;
-    currentCommandLen = 0;
-  }
-  if (currentCommand[0] == 'W') {
-    SetCursorPosition(JumpWordWithPunctuationForward(&buffer));
-    visibleCommandLen = currentCommandLen;
-    currentCommandLen = 0;
-  }
-  if (currentCommand[0] == 'B') {
-    SetCursorPosition(JumpWordWithPunctuationBackward(&buffer));
-    visibleCommandLen = currentCommandLen;
-    currentCommandLen = 0;
-  }
-  if (currentCommandLen == 2 && currentCommand[0] == 'g' && currentCommand[1] == 'g') {
-    buffer.cursor = 0;
-    offset.target = 0;
-    visibleCommandLen = currentCommandLen;
-    currentCommandLen = 0;
-  }
-  if (currentCommand[0] == 'G') {
-    buffer.cursor = buffer.file.size;
-    offset.target = (GetPageHeight() - textRect.height);
-    visibleCommandLen = currentCommandLen;
-    currentCommandLen = 0;
-  }
-
-  if (currentCommandLen == 2 && currentCommand[0] == 't' && currentCommand[1] == 't') {
-    PostQuitMessage(0);
-    isRunning = 0;
-  }
+  return 0;
 }
 
 void ClearCommand() {
   visibleCommandLen = currentCommandLen;
   currentCommandLen = 0;
 }
+
+void AppendCharIntoCommand(char ch) {
+  currentCommand[currentCommandLen++] = ch;
+  visibleCommandLen = 0;
+  hasMatchedAnyCommand = 0;
+
+  if (IsCommand("j"))
+    MoveDown();
+
+  if (IsCommand("k"))
+    MoveUp();
+
+  if (IsCommand("h"))
+    MoveLeft();
+
+  if (IsCommand("l"))
+    MoveRight();
+
+  if (IsCommand("w"))
+    SetCursorPosition(JumpWordForward(&buffer));
+
+  if (IsCommand("b"))
+    SetCursorPosition(JumpWordBackward(&buffer));
+
+  if (IsCommand("W"))
+    SetCursorPosition(JumpWordWithPunctuationForward(&buffer));
+
+  if (IsCommand("B"))
+    SetCursorPosition(JumpWordWithPunctuationBackward(&buffer));
+
+  if (IsCommand("gg")) {
+    buffer.cursor = 0;
+    offset.target = 0;
+  }
+  if (IsCommand("G")) {
+    buffer.cursor = buffer.file.size;
+    offset.target = (GetPageHeight() - textRect.height);
+  }
+
+  if (mode == Visual) {
+    if (IsCommand("d")) {
+      u32 selectionLeft = MinI32(buffer.selectionStart, buffer.cursor);
+      u32 selectionRight = MaxI32(buffer.selectionStart, buffer.cursor);
+      RemoveChars(&buffer.file, selectionLeft, selectionRight);
+      buffer.cursor = MinI32(buffer.cursor, buffer.selectionStart);
+      mode = Normal;
+    }
+    if (IsCommand("o")) {
+
+      i32 temp = buffer.cursor;
+      buffer.cursor = buffer.selectionStart;
+      buffer.selectionStart = temp;
+    }
+  } else {
+    if (IsCommand("dl") || IsCommand("dd")) {
+
+      int from = FindLineStart(buffer.cursor);
+      int to = FindLineEnd(buffer.cursor);
+      RemoveChars(&buffer.file, from, to);
+
+      buffer.cursor = MinI32(buffer.cursor, buffer.file.size);
+    }
+
+    if (IsCommand("dW")) {
+      int from = buffer.cursor;
+      int to = JumpWordWithPunctuationForward(&buffer) - 1;
+      RemoveChars(&buffer.file, from, to);
+    }
+    if (IsCommand("dw")) {
+      int from = buffer.cursor;
+      int to = JumpWordForward(&buffer) - 1;
+      RemoveChars(&buffer.file, from, to);
+    }
+    if (IsCommand("A")) {
+      buffer.cursor = FindLineStart(buffer.cursor);
+      while (buffer.cursor < buffer.file.size && IsWhitespace(buffer.file.content[buffer.cursor]))
+        buffer.cursor++;
+
+      mode = Insert;
+    }
+    if (IsCommand("O")) {
+      i32 lineStart = FindLineStart(buffer.cursor);
+      InsertCharAt(&buffer, lineStart, '\n');
+      buffer.cursor = lineStart;
+      mode = Insert;
+    }
+    if (IsCommand("o")) {
+      i32 lineEnd = FindLineEnd(buffer.cursor);
+      InsertCharAt(&buffer, lineEnd, '\n');
+      buffer.cursor = lineEnd + 1;
+      mode = Insert;
+    }
+    if (IsCommand("v")) {
+      mode = Visual;
+      buffer.selectionStart = buffer.cursor;
+    }
+    if (IsCommand("I")) {
+      buffer.cursor = FindLineEnd(buffer.cursor);
+      mode = Insert;
+    }
+    if (IsCommand("i")) {
+      mode = Insert;
+    }
+    if (IsCommand("a")) {
+      buffer.cursor = MaxI32(buffer.cursor - 1, 0);
+      mode = Insert;
+    }
+
+    if (IsCommand("tt")) {
+      PostQuitMessage(0);
+      isRunning = 0;
+    }
+  }
+  if (hasMatchedAnyCommand) 
+    ClearCommand();
+}
+
 
 LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
   switch (message) {
@@ -287,7 +295,7 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
   case WM_CHAR:
     char ch = (char)wParam;
     if (ch >= 'A' && ch <= 'z' || ch == ' ') {
-      if (mode == Normal)
+      if (mode == Normal || mode == Visual)
         AppendCharIntoCommand(ch);
       else if (mode == Insert) {
         if (ch < MAX_CHAR_CODE && ch >= ' ')
@@ -317,6 +325,9 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
       } else if (IsKeyPressed(VK_CONTROL) && wParam == 'U') {
         offset.target -= (float)textRect.height / 2.0f;
       }
+    } else if (mode == Visual) {
+      if (wParam == VK_ESCAPE)
+        mode = Normal;
     }
     break;
   case WM_DESTROY:
@@ -392,7 +403,8 @@ void DrawFooter() {
   int commandX = footerRect.width / 2 - (charsToShow * font.charWidth) / 2;
   for (int i = 0; i < charsToShow; i++) {
     u32 color = currentCommandLen > 0 ? 0xffffff : 0xbbbbbb;
-    CopyMonochromeTextureRectTo(&canvas, &footerRect, &font.textures[currentCommand[i]], commandX, y, color);
+    CopyMonochromeTextureRectTo(&canvas, &footerRect, &font.textures[currentCommand[i]], commandX,
+                                y, color);
     commandX += font.charWidth;
   }
 }
@@ -410,10 +422,42 @@ void DrawScrollBar() {
     f32 maxScrollY = height - scrollbarHeight;
     f32 scrollY = lerp(0, maxScrollY, scrollOffset / maxOffset);
 
-    PaintRect(textRect.x + textRect.width - scrollbarWidth, textRect.y + scrollY, scrollbarWidth, (i32)scrollbarHeight,
-              colorsScrollbar);
+    PaintRect(textRect.x + textRect.width - scrollbarWidth, textRect.y + scrollY, scrollbarWidth,
+              (i32)scrollbarHeight, colorsScrollbar);
   }
 }
+
+void DrawSelection() {
+  u32 bg = colorsSelection;
+  i32 padding = 10;
+  i32 x = padding;
+  i32 y = padding - (i32)offset.current;
+  if (mode == Visual) {
+    u32 selectionLeft = MinI32(buffer.selectionStart, buffer.cursor);
+    u32 selectionRight = MaxI32(buffer.selectionStart, buffer.cursor) + 1;
+
+    CursorPos startPos = GetPositionOffset(selectionLeft);
+    CursorPos endPos = GetPositionOffset(selectionRight);
+
+    i32 len = GetLineLength(&buffer, startPos.line);
+    i32 maxLen = len - startPos.lineOffset;
+    i32 firstLineLen = MinI32(selectionRight - selectionLeft, maxLen);
+
+    PaintRect(x + startPos.lineOffset * font.charWidth, y + startPos.line * lineHeightPx,
+              firstLineLen * font.charWidth, lineHeightPx, bg);
+
+    if (startPos.line != endPos.line) {
+      for (i32 l = startPos.line + 1; l < endPos.line; l++) {
+        PaintRect(x, y + l * lineHeightPx, GetLineLength(&buffer, l) * font.charWidth, lineHeightPx,
+                  bg);
+      }
+
+      PaintRect(x, y + endPos.line * lineHeightPx, endPos.lineOffset * font.charWidth, lineHeightPx,
+                bg);
+    }
+  }
+}
+
 void Draw() {
   for (i32 i = 0; i < canvas.width * canvas.height; i++)
     canvas.pixels[i] = colorsBg;
@@ -430,13 +474,24 @@ void Draw() {
   i32 x = padding;
   i32 y = startY;
 
-  u32 cursorColor = mode == Normal ? colorsCursorNormal : colorsCursorInsert;
+  u32 cursorColor = mode == Normal   ? colorsCursorNormal
+                    : mode == Visual ? colorsCursorVisual
+                                     : colorsCursorInsert;
+
   CursorPos cursor = GetCursorPosition();
   i32 cursorX = x + font.charWidth * cursor.lineOffset;
   i32 cursorY = y + lineHeightPx * cursor.line;
 
-  u32 lineColor = mode == Normal ? colorsCursorLineNormal : colorsCursorLineInsert;
+  u32 lineColor = mode == Normal   ? colorsCursorLineNormal
+                  : mode == Visual ? colorsCursorLineVisual
+                                   : colorsCursorLineInsert;
+  // cursor line background
   PaintRect(0, cursorY, textRect.width, lineHeightPx, lineColor);
+
+  // selection
+  DrawSelection();
+
+  // cursor
   PaintRect(cursorX, cursorY, font.charWidth, lineHeightPx, cursorColor);
   i32 charShift = (lineHeightPx - font.charHeight) / 2;
 
@@ -458,8 +513,8 @@ void Draw() {
 
   DrawFooter();
   DrawScrollBar();
-  StretchDIBits(dc, 0, 0, screen.width, screen.height, 0, 0, screen.width, screen.height, canvas.pixels, &bitmapInfo,
-                DIB_RGB_COLORS, SRCCOPY);
+  StretchDIBits(dc, 0, 0, screen.width, screen.height, 0, 0, screen.width, screen.height,
+                canvas.pixels, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
 }
 
 inline i64 EllapsedMs(i64 start) {
