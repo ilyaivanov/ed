@@ -98,7 +98,7 @@ void CenterViewOnCursor() {
   CursorPos cursor = GetCursorPosition();
   float cursorPos = cursor.line * lineHeightPx;
 
-  offset.target = cursorPos-(float)textRect.height / 2.0f;
+  offset.target = cursorPos - (float)textRect.height / 2.0f;
 }
 
 void SetCursorPosition(i32 v) {
@@ -136,7 +136,7 @@ void MoveUp() {
 
 void RemoveCurrentChar() {
   if (buffer.cursor > 0) {
-    RemoveCharAt(&buffer, buffer.cursor - 1);
+    RemoveChar(&buffer, buffer.cursor - 1);
     buffer.cursor--;
   }
 }
@@ -307,6 +307,10 @@ void AppendCharIntoCommand(char ch) {
       }
     }
 
+    if (IsCommand("x")) {
+      if (buffer.cursor < buffer.size -1 )
+        RemoveChar(&buffer, buffer.cursor);
+    }
     if (IsCommand("yy") || IsCommand("yl")) {
       i32 start = FindLineStart(&buffer, buffer.cursor);
       i32 end = FindLineEnd(&buffer, buffer.cursor);
@@ -333,7 +337,7 @@ void AppendCharIntoCommand(char ch) {
       if (textFromClipboard)
         VirtualFreeMemory(textFromClipboard);
     }
-    if (IsCommand("zz")) 
+    if (IsCommand("zz"))
       CenterViewOnCursor();
 
     if (IsCommand("tt")) {
@@ -374,9 +378,13 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
         InsertCharAtCursor(&buffer, '\n');
       else if (wParam == 'B' && IsKeyPressed(VK_CONTROL))
         RemoveCurrentChar();
+      else if (wParam == VK_BACK)
+        RemoveCurrentChar();
     } else if (mode == Normal) {
       if (wParam == VK_RETURN)
         InsertCharAtCursor(&buffer, '\n');
+      else if (wParam == VK_BACK)
+        RemoveCurrentChar();
       if (wParam == VK_ESCAPE)
         ClearCommand();
       else if (wParam == VK_F11) {

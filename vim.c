@@ -34,7 +34,7 @@ void RemoveChars(Buffer* string, int from, int to) {
   string->size -= (to - from + 1);
 }
 
-void RemoveCharAt(Buffer* buffer, i32 at) {
+void RemoveChar(Buffer* buffer, i32 at) {
   RemoveChars(buffer, at, at);
 }
 
