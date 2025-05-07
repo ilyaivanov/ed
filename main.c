@@ -85,7 +85,7 @@ CursorPos GetCursorPosition() {
 }
 
 i32 GetPageHeight() {
-  int rows = 2;
+  int rows = 1;
   for (i32 i = 0; i < buffer.size; i++) {
     if (buffer.content[i] == '\n')
       rows++;
@@ -94,7 +94,7 @@ i32 GetPageHeight() {
 }
 
 void SetCursorPosition(i32 v) {
-  buffer.cursor = Clampi32(v, 0, buffer.size);
+  buffer.cursor = Clampi32(v, 0, buffer.size - 1);
   CursorPos cursor = GetCursorPosition();
 
   float lineToLookAhead = 5.0f * lineHeightPx;
@@ -142,10 +142,10 @@ inline BOOL IsKeyPressed(u32 code) {
   return (GetKeyState(code) >> 15) & 1;
 }
 void MoveLeft() {
-  buffer.cursor = MaxI32(buffer.cursor - 1, 0);
+  SetCursorPosition(buffer.cursor - 1);
 }
 void MoveRight() {
-  buffer.cursor = MinI32(buffer.cursor + 1, buffer.size);
+  SetCursorPosition(buffer.cursor + 1);
 }
 
 i32 hasMatchedAnyCommand;
@@ -201,8 +201,8 @@ void AppendCharIntoCommand(char ch) {
     offset.target = 0;
   }
   if (IsCommand("G")) {
-    buffer.cursor = buffer.size;
-    offset.target = (GetPageHeight() - textRect.height);
+    buffer.cursor = buffer.size - 1;
+     offset.target = (GetPageHeight() - textRect.height);
   }
   if (IsCommand("}"))
     SetCursorPosition(JumpParagraphDown(&buffer));
@@ -235,7 +235,8 @@ void AppendCharIntoCommand(char ch) {
       int to = FindLineEnd(&buffer, buffer.cursor);
       RemoveChars(&buffer, from, to);
 
-      buffer.cursor = MinI32(buffer.cursor, buffer.size);
+
+      SetCursorPosition(buffer.cursor);
     }
 
     if (IsCommand("dW")) {
