@@ -11,6 +11,9 @@ u32 colorsBg = 0x121212;
 u32 colorsFont = 0xE6E6E6;
 u32 colorsFooter = 0x1D1D1D;
 
+u32 colorsCursorUnfocused = 0x666666;
+u32 colorsCursorLineUnfocused = 0x333333;
+
 u32 colorsCursorNormal = 0xFFDC32;
 u32 colorsCursorInsert = 0xFC2837;
 u32 colorsCursorVisual = 0x3E9FBE;
@@ -19,18 +22,61 @@ u32 colorsCursorLineInsert = 0x3D2425;
 u32 colorsCursorLineVisual = 0x202020;
 
 u32 colorsSelection = 0x253340;
-u32 colorsScrollbar = 0x222222;
+u32 colorsScrollbar = 0x888888;
 
-Rect textRect = {0};
+Rect leftRect;
+Spring leftOffset;
+
+Rect middleRect;
+Spring middleOffset;
+
+Rect rightRect;
+Spring rightOffset;
+
 Rect footerRect = {0};
+i32 footerPadding = 2;
 Rect screen = {0};
 
-Buffer buffer;
-char* filePath = "..\\vim.c";
+Buffer leftBuffer;
+char* leftFilePath = "..\\misc\\vim.txt";
 
+Buffer middleBuffer;
+char* middleFilePath = "..\\main.c";
+
+Buffer rightBuffer;
+char* rightFilePath = "..\\vim.c";
+
+typedef enum EdFile { Left, Middle, Right } EdFile;
+
+Buffer* selectedBuffer;
+char* currentFilePath;
+Spring* selectedOffset;
+Rect* selectedRect;
+EdFile selectedFile;
+
+void SelectFile(EdFile file) {
+  selectedFile = file;
+  if (file == Left) {
+    selectedBuffer = &leftBuffer;
+    currentFilePath = leftFilePath;
+    selectedOffset = &leftOffset;
+    selectedRect = &leftRect;
+  }
+  if (file == Right) {
+    selectedBuffer = &rightBuffer;
+    currentFilePath = rightFilePath;
+    selectedOffset = &rightOffset;
+    selectedRect = &rightRect;
+  }
+  if (file == Middle) {
+    selectedBuffer = &middleBuffer;
+    currentFilePath = middleFilePath;
+    selectedOffset = &middleOffset;
+    selectedRect = &middleRect;
+  }
+}
 int isRunning = 1;
-int isFullscreen = 0;
-Spring offset;
+int isFullscreen = 1;
 
 typedef enum Mode { Normal, Insert, Visual } Mode;
 f32 appTimeMs = 0;
@@ -47,7 +93,7 @@ FontData font;
 
 i32 lineHeightPx;
 f32 lineHeight = 1.1;
-i32 fontSize = 16;
+i32 fontSize = 15;
 char* fontName = "Consolas";
 
 typedef struct CursorPos {
@@ -56,12 +102,13 @@ typedef struct CursorPos {
   i32 line;
   i32 lineOffset;
 } CursorPos;
-CursorPos GetPositionOffset(i32 pos) {
+
+CursorPos GetPositionOffset(Buffer* buffer, i32 pos) {
   CursorPos res = {0};
   res.global = -1;
 
-  i32 textSize = buffer.size;
-  char* text = buffer.content;
+  i32 textSize = buffer->size;
+  char* text = buffer->content;
 
   if (pos >= 0 && pos <= textSize) {
     res.global = pos;
@@ -80,14 +127,14 @@ CursorPos GetPositionOffset(i32 pos) {
   return res;
 }
 
-CursorPos GetCursorPosition() {
-  return GetPositionOffset(buffer.cursor);
+CursorPos GetCursorPosition(Buffer* buffer) {
+  return GetPositionOffset(buffer, buffer->cursor);
 }
 
-i32 GetPageHeight() {
+i32 GetPageHeight(Buffer* buffer) {
   int rows = 1;
-  for (i32 i = 0; i < buffer.size; i++) {
-    if (buffer.content[i] == '\n')
+  for (i32 i = 0; i < buffer->size; i++) {
+    if (buffer->content[i] == '\n')
       rows++;
   }
   return rows * lineHeightPx;
@@ -95,39 +142,39 @@ i32 GetPageHeight() {
 
 void CenterViewOnCursor() {
 
-  CursorPos cursor = GetCursorPosition();
+  CursorPos cursor = GetCursorPosition(selectedBuffer);
   float cursorPos = cursor.line * lineHeightPx;
 
-  offset.target = cursorPos - (float)textRect.height / 2.0f;
+  selectedOffset->target = cursorPos - (float)selectedRect->height / 2.0f;
 }
 
 void SetCursorPosition(i32 v) {
-  buffer.cursor = Clampi32(v, 0, buffer.size - 1);
-  CursorPos cursor = GetCursorPosition();
+  selectedBuffer->cursor = Clampi32(v, 0, selectedBuffer->size - 1);
+  CursorPos cursor = GetCursorPosition(selectedBuffer);
 
   float lineToLookAhead = 5.0f * lineHeightPx;
   float cursorPos = cursor.line * lineHeightPx;
-  float maxScroll = GetPageHeight() - textRect.height;
-  if ((offset.target + textRect.height - lineToLookAhead) < cursorPos)
-    offset.target = Clamp(cursorPos - (float)textRect.height / 2.0f, 0, maxScroll);
-  else if ((offset.target + lineToLookAhead) > cursorPos)
-    offset.target = Clamp(cursorPos - (float)textRect.height / 2.0f, 0, maxScroll);
+  float maxScroll = GetPageHeight(selectedBuffer) - selectedRect->height;
+  if ((selectedOffset->target + selectedRect->height - lineToLookAhead) < cursorPos)
+    selectedOffset->target = Clamp(cursorPos - (float)selectedRect->height / 2.0f, 0, maxScroll);
+  else if ((selectedOffset->target + lineToLookAhead) > cursorPos)
+    selectedOffset->target = Clamp(cursorPos - (float)selectedRect->height / 2.0f, 0, maxScroll);
 }
 
 void MoveDown() {
-  i32 next = FindLineEnd(&buffer, buffer.cursor);
-  if (next != buffer.size) {
-    i32 nextNextLine = FindLineEnd(&buffer, next + 1);
-    CursorPos cursor = GetCursorPosition();
+  i32 next = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
+  if (next != selectedBuffer->size) {
+    i32 nextNextLine = FindLineEnd(selectedBuffer, next + 1);
+    CursorPos cursor = GetCursorPosition(selectedBuffer);
     SetCursorPosition(MinI32(next + cursor.lineOffset + 1, nextNextLine));
   }
 }
 
 void MoveUp() {
-  i32 prev = FindLineStart(&buffer, buffer.cursor);
+  i32 prev = FindLineStart(selectedBuffer, selectedBuffer->cursor);
   if (prev != 0) {
-    i32 prevPrevLine = FindLineStart(&buffer, prev - 1);
-    CursorPos cursor = GetCursorPosition();
+    i32 prevPrevLine = FindLineStart(selectedBuffer, prev - 1);
+    CursorPos cursor = GetCursorPosition(selectedBuffer);
     i32 pos = prevPrevLine + cursor.lineOffset;
 
     SetCursorPosition(MinI32(pos, prev));
@@ -135,14 +182,14 @@ void MoveUp() {
 }
 
 void RemoveCurrentChar() {
-  if (buffer.cursor > 0) {
-    RemoveChar(&buffer, buffer.cursor - 1);
-    buffer.cursor--;
+  if (selectedBuffer->cursor > 0) {
+    RemoveChar(selectedBuffer, selectedBuffer->cursor - 1);
+    selectedBuffer->cursor--;
   }
 }
 
 void SaveFile() {
-  WriteMyFile(filePath, buffer.content, buffer.size);
+  WriteMyFile(currentFilePath, selectedBuffer->content, selectedBuffer->size);
   isSaved = 1;
 }
 
@@ -150,10 +197,10 @@ inline BOOL IsKeyPressed(u32 code) {
   return (GetKeyState(code) >> 15) & 1;
 }
 void MoveLeft() {
-  SetCursorPosition(buffer.cursor - 1);
+  SetCursorPosition(selectedBuffer->cursor - 1);
 }
 void MoveRight() {
-  SetCursorPosition(buffer.cursor + 1);
+  SetCursorPosition(selectedBuffer->cursor + 1);
 }
 
 i32 hasMatchedAnyCommand;
@@ -193,135 +240,137 @@ void AppendCharIntoCommand(char ch) {
     MoveRight();
 
   if (IsCommand("w"))
-    SetCursorPosition(JumpWordForward(&buffer));
+    SetCursorPosition(JumpWordForward(selectedBuffer));
 
   if (IsCommand("b"))
-    SetCursorPosition(JumpWordBackward(&buffer));
+    SetCursorPosition(JumpWordBackward(selectedBuffer));
 
   if (IsCommand("W"))
-    SetCursorPosition(JumpWordWithPunctuationForward(&buffer));
+    SetCursorPosition(JumpWordWithPunctuationForward(selectedBuffer));
 
   if (IsCommand("B"))
-    SetCursorPosition(JumpWordWithPunctuationBackward(&buffer));
+    SetCursorPosition(JumpWordWithPunctuationBackward(selectedBuffer));
 
   if (IsCommand("gg")) {
-    buffer.cursor = 0;
-    offset.target = 0;
+    selectedBuffer->cursor = 0;
+    selectedOffset->target = 0;
   }
   if (IsCommand("G")) {
-    buffer.cursor = buffer.size - 1;
-    offset.target = (GetPageHeight() - textRect.height);
+    selectedBuffer->cursor = selectedBuffer->size - 1;
+    selectedOffset->target = (GetPageHeight(selectedBuffer) - selectedRect->height);
   }
   if (IsCommand("}"))
-    SetCursorPosition(JumpParagraphDown(&buffer));
+    SetCursorPosition(JumpParagraphDown(selectedBuffer));
   if (IsCommand("{"))
-    SetCursorPosition(JumpParagraphUp(&buffer));
+    SetCursorPosition(JumpParagraphUp(selectedBuffer));
 
   if (mode == Visual) {
     if (IsCommand("d")) {
-      i32 selectionLeft = MinI32(buffer.selectionStart, buffer.cursor);
-      i32 selectionRight = MaxI32(buffer.selectionStart, buffer.cursor);
-      RemoveChars(&buffer, selectionLeft, selectionRight);
-      buffer.cursor = MinI32(buffer.cursor, buffer.selectionStart);
+      i32 selectionLeft = MinI32(selectedBuffer->selectionStart, selectedBuffer->cursor);
+      i32 selectionRight = MaxI32(selectedBuffer->selectionStart, selectedBuffer->cursor);
+      RemoveChars(selectedBuffer, selectionLeft, selectionRight);
+      selectedBuffer->cursor = MinI32(selectedBuffer->cursor, selectedBuffer->selectionStart);
       mode = Normal;
     }
     if (IsCommand("o")) {
-      i32 temp = buffer.cursor;
-      buffer.cursor = buffer.selectionStart;
-      buffer.selectionStart = temp;
+      i32 temp = selectedBuffer->cursor;
+      selectedBuffer->cursor = selectedBuffer->selectionStart;
+      selectedBuffer->selectionStart = temp;
     }
     if (IsCommand("y")) {
-      i32 selectionLeft = MinI32(buffer.selectionStart, buffer.cursor);
-      i32 selectionRight = MaxI32(buffer.selectionStart, buffer.cursor);
-      ClipboardCopy(mainWindow, buffer.content + selectionLeft, selectionRight - selectionLeft + 1);
+      i32 selectionLeft = MinI32(selectedBuffer->selectionStart, selectedBuffer->cursor);
+      i32 selectionRight = MaxI32(selectedBuffer->selectionStart, selectedBuffer->cursor);
+      ClipboardCopy(mainWindow, selectedBuffer->content + selectionLeft,
+                    selectionRight - selectionLeft + 1);
       // mode = Normal;
     }
   } else if (mode == Normal) {
     if (IsCommand("dl") || IsCommand("dd")) {
 
-      int from = FindLineStart(&buffer, buffer.cursor);
-      int to = FindLineEnd(&buffer, buffer.cursor);
-      RemoveChars(&buffer, from, to);
+      int from = FindLineStart(selectedBuffer, selectedBuffer->cursor);
+      int to = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
+      RemoveChars(selectedBuffer, from, to);
 
-      SetCursorPosition(buffer.cursor);
+      SetCursorPosition(selectedBuffer->cursor);
     }
 
     if (IsCommand("dW")) {
-      int from = buffer.cursor;
-      int to = JumpWordWithPunctuationForward(&buffer) - 1;
-      RemoveChars(&buffer, from, to);
+      int from = selectedBuffer->cursor;
+      int to = JumpWordWithPunctuationForward(selectedBuffer) - 1;
+      RemoveChars(selectedBuffer, from, to);
     }
     if (IsCommand("dw")) {
-      int from = buffer.cursor;
-      int to = JumpWordForward(&buffer) - 1;
-      RemoveChars(&buffer, from, to);
+      int from = selectedBuffer->cursor;
+      int to = JumpWordForward(selectedBuffer) - 1;
+      RemoveChars(selectedBuffer, from, to);
     }
     if (IsCommand("O")) {
-      i32 lineStart = FindLineStart(&buffer, buffer.cursor);
-      InsertCharAt(&buffer, lineStart, '\n');
-      buffer.cursor = lineStart;
+      i32 lineStart = FindLineStart(selectedBuffer, selectedBuffer->cursor);
+      InsertCharAt(selectedBuffer, lineStart, '\n');
+      selectedBuffer->cursor = lineStart;
       mode = Insert;
     }
     if (IsCommand("o")) {
-      i32 lineEnd = FindLineEnd(&buffer, buffer.cursor);
-      InsertCharAt(&buffer, lineEnd, '\n');
-      buffer.cursor = lineEnd + 1;
+      i32 lineEnd = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
+      InsertCharAt(selectedBuffer, lineEnd, '\n');
+      selectedBuffer->cursor = lineEnd + 1;
       mode = Insert;
     }
     if (IsCommand("v")) {
       mode = Visual;
-      buffer.selectionStart = buffer.cursor;
+      selectedBuffer->selectionStart = selectedBuffer->cursor;
     }
     if (IsCommand("I")) {
-      buffer.cursor = FindLineEnd(&buffer, buffer.cursor);
+      selectedBuffer->cursor = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
       mode = Insert;
     }
     if (IsCommand("i")) {
       mode = Insert;
     }
     if (IsCommand("a")) {
-      buffer.cursor = MaxI32(buffer.cursor - 1, 0);
+      selectedBuffer->cursor = MaxI32(selectedBuffer->cursor - 1, 0);
       mode = Insert;
     }
     if (IsCommand("A")) {
-      buffer.cursor = FindLineStart(&buffer, buffer.cursor);
-      while (buffer.cursor < buffer.size && IsWhitespace(buffer.content[buffer.cursor]))
-        buffer.cursor++;
+      selectedBuffer->cursor = FindLineStart(selectedBuffer, selectedBuffer->cursor);
+      while (selectedBuffer->cursor < selectedBuffer->size &&
+             IsWhitespace(selectedBuffer->content[selectedBuffer->cursor]))
+        selectedBuffer->cursor++;
 
       mode = Insert;
     }
     if (IsCommand("C")) {
-      i32 start = FindLineStart(&buffer, buffer.cursor);
-      i32 end = FindLineEnd(&buffer, buffer.cursor) - 1;
+      i32 start = FindLineStart(selectedBuffer, selectedBuffer->cursor);
+      i32 end = FindLineEnd(selectedBuffer, selectedBuffer->cursor) - 1;
       if (start != end) {
-        RemoveChars(&buffer, buffer.cursor, end);
+        RemoveChars(selectedBuffer, selectedBuffer->cursor, end);
       }
       mode = Insert;
     }
     if (IsCommand("D")) {
-      i32 start = FindLineStart(&buffer, buffer.cursor);
-      i32 end = FindLineEnd(&buffer, buffer.cursor) - 1;
+      i32 start = FindLineStart(selectedBuffer, selectedBuffer->cursor);
+      i32 end = FindLineEnd(selectedBuffer, selectedBuffer->cursor) - 1;
       if (start != end) {
-        RemoveChars(&buffer, buffer.cursor, end);
-        buffer.cursor -= 1;
+        RemoveChars(selectedBuffer, selectedBuffer->cursor, end);
+        selectedBuffer->cursor -= 1;
       }
     }
 
     if (IsCommand("x")) {
-      if (buffer.cursor < buffer.size -1 )
-        RemoveChar(&buffer, buffer.cursor);
+      if (selectedBuffer->cursor < selectedBuffer->size - 1)
+        RemoveChar(selectedBuffer, selectedBuffer->cursor);
     }
     if (IsCommand("yy") || IsCommand("yl")) {
-      i32 start = FindLineStart(&buffer, buffer.cursor);
-      i32 end = FindLineEnd(&buffer, buffer.cursor);
-      ClipboardCopy(mainWindow, buffer.content + start, end - start + 1);
+      i32 start = FindLineStart(selectedBuffer, selectedBuffer->cursor);
+      i32 end = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
+      ClipboardCopy(mainWindow, selectedBuffer->content + start, end - start + 1);
     }
     if (IsCommand("p")) {
       i32 size = 0;
       char* textFromClipboard = ClipboardPaste(mainWindow, &size);
 
-      InsertChars(&buffer, textFromClipboard, size, buffer.cursor + 1);
-      buffer.cursor = buffer.cursor + 1 + size;
+      InsertChars(selectedBuffer, textFromClipboard, size, selectedBuffer->cursor + 1);
+      selectedBuffer->cursor = selectedBuffer->cursor + 1 + size;
 
       if (textFromClipboard)
         VirtualFreeMemory(textFromClipboard);
@@ -331,8 +380,8 @@ void AppendCharIntoCommand(char ch) {
       i32 size = 0;
       char* textFromClipboard = ClipboardPaste(mainWindow, &size);
 
-      InsertChars(&buffer, textFromClipboard, size, buffer.cursor);
-      buffer.cursor = buffer.cursor + size;
+      InsertChars(selectedBuffer, textFromClipboard, size, selectedBuffer->cursor);
+      selectedBuffer->cursor = selectedBuffer->cursor + size;
 
       if (textFromClipboard)
         VirtualFreeMemory(textFromClipboard);
@@ -365,65 +414,91 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
         AppendCharIntoCommand(ch);
       else if (mode == Insert) {
         if (ch < MAX_CHAR_CODE && ch >= ' ')
-          InsertCharAtCursor(&buffer, ch);
+          InsertCharAtCursor(selectedBuffer, ch);
         isSaved = 0;
       }
     }
     break;
+  case WM_SYSKEYDOWN:
   case WM_KEYDOWN:
     if (mode == Insert) {
       if (wParam == VK_ESCAPE)
         mode = Normal;
       if (wParam == VK_RETURN)
-        InsertCharAtCursor(&buffer, '\n');
+        InsertCharAtCursor(selectedBuffer, '\n');
       else if (wParam == 'B' && IsKeyPressed(VK_CONTROL))
         RemoveCurrentChar();
       else if (wParam == VK_BACK)
         RemoveCurrentChar();
     } else if (mode == Normal) {
       if (wParam == VK_RETURN)
-        InsertCharAtCursor(&buffer, '\n');
+        InsertCharAtCursor(selectedBuffer, '\n');
       else if (wParam == VK_BACK)
         RemoveCurrentChar();
       if (wParam == VK_ESCAPE)
         ClearCommand();
+      if (wParam == '1' && IsKeyPressed(VK_MENU))
+        SelectFile(Left);
+      if (wParam == '2' && IsKeyPressed(VK_MENU))
+        SelectFile(Middle);
+      if (wParam == '3' && IsKeyPressed(VK_MENU))
+        SelectFile(Right);
       else if (wParam == VK_F11) {
         isFullscreen = !isFullscreen;
         SetFullscreen(window, isFullscreen);
       } else if (IsKeyPressed(VK_CONTROL) && wParam == 'D') {
-        offset.target += (float)textRect.height / 2.0f;
+        selectedOffset->target += (float)selectedRect->height / 2.0f;
       } else if (IsKeyPressed(VK_CONTROL) && wParam == 'U') {
-        offset.target -= (float)textRect.height / 2.0f;
+        selectedOffset->target -= (float)selectedRect->height / 2.0f;
       }
     } else if (mode == Visual) {
       if (wParam == VK_ESCAPE)
         mode = Normal;
     }
     break;
+  case WM_SYSCOMMAND:
+    if (wParam == SC_KEYMENU)
+      return 0;
+
+    break;
   case WM_DESTROY:
     PostQuitMessage(0);
     isRunning = 0;
     break;
   case WM_SIZE:
-    screen.width = LOWORD(lParam);
-    screen.height = HIWORD(lParam);
+    canvas.width = screen.width = LOWORD(lParam);
+    canvas.height = screen.height = HIWORD(lParam);
 
     bitmapInfo.bmiHeader.biSize = sizeof(bitmapInfo.bmiHeader);
     bitmapInfo.bmiHeader.biBitCount = 32;
     bitmapInfo.bmiHeader.biWidth = screen.width;
+    // makes rows go down, instead of going up by default
     bitmapInfo.bmiHeader.biHeight = -screen.height;
-    // makes rows go down, instead of
-    // going up by default
     bitmapInfo.bmiHeader.biPlanes = 1;
     bitmapInfo.bmiHeader.biCompression = BI_RGB;
 
-    canvas.width = screen.width;
-    canvas.height = screen.height;
     if (canvas.pixels)
       VirtualFreeMemory(canvas.pixels);
 
     canvas.pixels = VirtualAllocateMemory(canvas.width * canvas.height * 4);
     dc = GetDC(window);
+
+    int footerHeight = font.charHeight + footerPadding * 2;
+    footerRect.width = screen.width;
+    footerRect.height = footerHeight;
+    footerRect.y = screen.height - footerRect.height;
+
+    leftRect.width = 80 * font.charWidth;
+    leftRect.height = canvas.height - footerRect.height;
+
+    i32 codeWidth = (screen.width - leftRect.width) / 2;
+    middleRect.x = leftRect.width;
+    middleRect.width = canvas.width / 3;
+    middleRect.height = canvas.height - footerRect.height;
+
+    rightRect.x = middleRect.x + middleRect.width;
+    rightRect.width = canvas.width - (leftRect.width + middleRect.width);
+    rightRect.height = canvas.height - footerRect.height;
   }
   return DefWindowProc(window, message, wParam, lParam);
 }
@@ -454,11 +529,20 @@ void PaintRect(i32 x, i32 y, i32 width, i32 height, u32 color) {
     }
   }
 }
-i32 footerPadding = 2;
+
+void RectFill(Rect r, u32 color) {
+  PaintRect(r.x, r.y, r.width, r.height, color);
+}
+
+void RectFillRightBorder(Rect r, i32 width, u32 color) {
+  PaintRect(r.x + r.width - width / 2, r.y, width, r.height, color);
+}
+
 void DrawFooter() {
-  char* label = filePath;
+  RectFill(footerRect, colorsFooter);
+
+  char* label = currentFilePath;
   int len = strlen(label);
-  PaintRect(footerRect.x, footerRect.y, footerRect.width, footerRect.height, colorsFooter);
   int x = footerPadding;
   int y = footerRect.y;
   while (*label) {
@@ -470,7 +554,7 @@ void DrawFooter() {
     CopyMonochromeTextureRectTo(&canvas, &footerRect, &font.textures['*'], x, y, 0xffffff);
 
   int charsToShow = currentCommandLen > 0 ? currentCommandLen : visibleCommandLen;
-  int commandX = footerRect.width / 2 - (charsToShow * font.charWidth) / 2;
+  int commandX = footerRect.width / 2;
   for (int i = 0; i < charsToShow; i++) {
     u32 color = currentCommandLen > 0 ? 0xffffff : 0xbbbbbb;
     CopyMonochromeTextureRectTo(&canvas, &footerRect, &font.textures[currentCommand[i]], commandX,
@@ -479,12 +563,12 @@ void DrawFooter() {
   }
 }
 
-void DrawScrollBar() {
-  f32 pageHeight = (f32)GetPageHeight();
+void DrawScrollBar(Rect rect, Buffer* buffer, Spring* offset) {
+  f32 pageHeight = (f32)GetPageHeight(buffer);
   float scrollbarWidth = 10;
-  if (textRect.height < pageHeight) {
-    f32 height = (f32)textRect.height;
-    f32 scrollOffset = (f32)offset.current;
+  if (rect.height < pageHeight) {
+    f32 height = (f32)rect.height;
+    f32 scrollOffset = (f32)offset->current;
 
     f32 scrollbarHeight = (height * height) / pageHeight;
 
@@ -492,24 +576,24 @@ void DrawScrollBar() {
     f32 maxScrollY = height - scrollbarHeight;
     f32 scrollY = lerp(0, maxScrollY, scrollOffset / maxOffset);
 
-    PaintRect(textRect.x + textRect.width - scrollbarWidth, textRect.y + scrollY, scrollbarWidth,
+    PaintRect(rect.x + rect.width - scrollbarWidth, rect.y + scrollY, scrollbarWidth,
               (i32)scrollbarHeight, colorsScrollbar);
   }
 }
 
-void DrawSelection() {
+void DrawSelection(Buffer* buffer, Spring* offset) {
   u32 bg = colorsSelection;
   i32 padding = 10;
   i32 x = padding;
-  i32 y = padding - (i32)offset.current;
+  i32 y = padding - (i32)offset->current;
   if (mode == Visual) {
-    u32 selectionLeft = MinI32(buffer.selectionStart, buffer.cursor);
-    u32 selectionRight = MaxI32(buffer.selectionStart, buffer.cursor) + 1;
+    u32 selectionLeft = MinI32(selectedBuffer->selectionStart, selectedBuffer->cursor);
+    u32 selectionRight = MaxI32(selectedBuffer->selectionStart, selectedBuffer->cursor) + 1;
 
-    CursorPos startPos = GetPositionOffset(selectionLeft);
-    CursorPos endPos = GetPositionOffset(selectionRight);
+    CursorPos startPos = GetPositionOffset(buffer, selectionLeft);
+    CursorPos endPos = GetPositionOffset(buffer, selectionRight);
 
-    i32 len = GetLineLength(&buffer, startPos.line);
+    i32 len = GetLineLength(selectedBuffer, startPos.line);
     i32 maxLen = len - startPos.lineOffset;
     i32 firstLineLen = MinI32(selectionRight - selectionLeft, maxLen);
 
@@ -518,8 +602,8 @@ void DrawSelection() {
 
     if (startPos.line != endPos.line) {
       for (i32 l = startPos.line + 1; l < endPos.line; l++) {
-        PaintRect(x, y + l * lineHeightPx, GetLineLength(&buffer, l) * font.charWidth, lineHeightPx,
-                  bg);
+        PaintRect(x, y + l * lineHeightPx, GetLineLength(selectedBuffer, l) * font.charWidth,
+                  lineHeightPx, bg);
       }
 
       PaintRect(x, y + endPos.line * lineHeightPx, endPos.lineOffset * font.charWidth, lineHeightPx,
@@ -528,52 +612,48 @@ void DrawSelection() {
   }
 }
 
-void Draw() {
-  for (i32 i = 0; i < canvas.width * canvas.height; i++)
-    canvas.pixels[i] = colorsBg;
-
-  footerRect.width = screen.width;
-  int footerHeight = font.charHeight + footerPadding * 2;
-  footerRect.height = footerHeight;
-  footerRect.y = screen.height - footerRect.height;
-  textRect.width = screen.width;
-  textRect.height = screen.height - footerRect.height;
-
+void DrawArea(Rect rect, Buffer* buffer, Spring* offset, EdFile file) {
   i32 padding = 10;
-  i32 startY = padding - (i32)offset.current;
-  i32 x = padding;
-  i32 y = startY;
+  i32 startY = padding - (i32)offset->current;
+  i32 startX = rect.x + padding;
+  i32 x = startX;
+  i32 y = rect.y + startY;
 
   u32 cursorColor = mode == Normal   ? colorsCursorNormal
                     : mode == Visual ? colorsCursorVisual
                                      : colorsCursorInsert;
 
-  CursorPos cursor = GetCursorPosition();
+  CursorPos cursor = GetCursorPosition(buffer);
   i32 cursorX = x + font.charWidth * cursor.lineOffset;
   i32 cursorY = y + lineHeightPx * cursor.line;
 
   u32 lineColor = mode == Normal   ? colorsCursorLineNormal
                   : mode == Visual ? colorsCursorLineVisual
                                    : colorsCursorLineInsert;
+
+  if (file != selectedFile) {
+    cursorColor = colorsCursorUnfocused;
+    lineColor = colorsCursorLineUnfocused;
+  }
   // cursor line background
-  PaintRect(0, cursorY, textRect.width, lineHeightPx, lineColor);
+  PaintRect(rect.x, cursorY, rect.width, lineHeightPx, lineColor);
 
   // selection
-  DrawSelection();
+  DrawSelection(buffer, offset);
 
   // cursor
   PaintRect(cursorX, cursorY, font.charWidth, lineHeightPx, cursorColor);
   i32 charShift = (lineHeightPx - font.charHeight) / 2;
 
-  for (i32 i = 0; i < buffer.size; i++) {
+  for (i32 i = 0; i < buffer->size; i++) {
     i32 charY = y + charShift;
-    char ch = buffer.content[i];
+    char ch = buffer->content[i];
     if (ch == '\n') {
-      x = padding;
+      x = startX;
       y += lineHeightPx;
     } else if (ch < MAX_CHAR_CODE && ch >= ' ') {
-      u32 charColor = i == buffer.cursor ? colorsBg : colorsFont;
-      CopyMonochromeTextureRectTo(&canvas, &textRect, &font.textures[ch], x, charY, charColor);
+      u32 charColor = i == buffer->cursor ? colorsBg : colorsFont;
+      CopyMonochromeTextureRectTo(&canvas, &rect, &font.textures[ch], x, charY, charColor);
       x += font.charWidth;
     } else {
       PaintRect(x, charY, font.charWidth, lineHeightPx, 0xff0000);
@@ -581,8 +661,23 @@ void Draw() {
     }
   }
 
+  DrawScrollBar(rect, buffer, offset);
+}
+
+void Draw() {
+  for (i32 i = 0; i < canvas.width * canvas.height; i++)
+    canvas.pixels[i] = colorsBg;
+
+  RectFillRightBorder(leftRect, 4, 0x666666);
+  RectFillRightBorder(middleRect, 4, 0x666666);
+  RectFillRightBorder(rightRect, 4, 0x666666);
+
+  DrawArea(leftRect, &leftBuffer, &leftOffset, Left);
+  DrawArea(middleRect, &middleBuffer, &middleOffset, Middle);
+  DrawArea(rightRect, &rightBuffer, &rightOffset, Right);
+
   DrawFooter();
-  DrawScrollBar();
+
   StretchDIBits(dc, 0, 0, screen.width, screen.height, 0, 0, screen.width, screen.height,
                 canvas.pixels, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
 }
@@ -598,14 +693,21 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
 
   PreventWindowsDPIScaling();
 
-  mainWindow = OpenWindow(OnEvent, colorsBg, "Editor");
-
-  dc = GetDC(mainWindow);
-  buffer = ReadFileIntoDoubledSizedBuffer(filePath);
-
-  InitAnimations();
   Arena fontArena = CreateArena(500 * 1024);
   InitFont(&font, fontName, fontSize, &fontArena);
+
+  mainWindow = OpenWindow(OnEvent, colorsBg, "Editor");
+
+  if (isFullscreen)
+    SetFullscreen(mainWindow, 1);
+
+  dc = GetDC(mainWindow);
+  leftBuffer = ReadFileIntoDoubledSizedBuffer(leftFilePath);
+  middleBuffer = ReadFileIntoDoubledSizedBuffer(middleFilePath);
+  rightBuffer = ReadFileIntoDoubledSizedBuffer(rightFilePath);
+
+  SelectFile(Left);
+  InitAnimations();
   lineHeightPx = RoundI32((f32)font.charHeight * lineHeight);
   i64 startCounter = GetPerfCounter();
   while (isRunning) {
@@ -619,7 +721,10 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
     // Sleep(10);
     i64 endCounter = GetPerfCounter();
     float deltaMs = ((f32)(endCounter - startCounter) * 1000.0f / (f32)GetPerfFrequency());
-    UpdateSpring(&offset, deltaMs / 1000.0f);
+    float deltaSec = deltaMs / 1000.0f;
+    UpdateSpring(&leftOffset, deltaSec);
+    UpdateSpring(&middleOffset, deltaSec);
+    UpdateSpring(&rightOffset, deltaSec);
     appTimeMs += deltaMs;
     startCounter = endCounter;
   }
