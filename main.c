@@ -581,11 +581,11 @@ void DrawScrollBar(Rect rect, Buffer* buffer, Spring* offset) {
   }
 }
 
-void DrawSelection(Buffer* buffer, Spring* offset) {
+void DrawSelection(Buffer* buffer, Rect rect, Spring* offset) {
   u32 bg = colorsSelection;
   i32 padding = 10;
-  i32 x = padding;
-  i32 y = padding - (i32)offset->current;
+  i32 x = padding + rect.x;
+  i32 y = padding + rect.y - (i32)offset->current;
   if (mode == Visual) {
     u32 selectionLeft = MinI32(selectedBuffer->selectionStart, selectedBuffer->cursor);
     u32 selectionRight = MaxI32(selectedBuffer->selectionStart, selectedBuffer->cursor) + 1;
@@ -639,7 +639,8 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset, EdFile file) {
   PaintRect(rect.x, cursorY, rect.width, lineHeightPx, lineColor);
 
   // selection
-  DrawSelection(buffer, offset);
+  if (selectedFile == file)
+    DrawSelection(buffer, rect, offset);
 
   // cursor
   PaintRect(cursorX, cursorY, font.charWidth, lineHeightPx, cursorColor);
