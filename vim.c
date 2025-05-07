@@ -1,6 +1,5 @@
 #pragma once
 
-
 typedef struct Buffer {
   char *content;
   i32 size;
@@ -27,14 +26,11 @@ i32 FindLineEnd(Buffer *buffer, i32 pos) {
 }
 
 void RemoveChars(Buffer *string, int from, int to) {
-  // Calculate the number of characters to shift
   char *content = string->content;
   int num_to_shift = string->size - (to + 1);
 
-  // Use memmove to shift the remaining characters
   memmove(content + from, content + to + 1, num_to_shift);
 
-  // Update size after removing the characters
   string->size -= (to - from + 1);
 }
 
@@ -171,17 +167,32 @@ i32 GetLineOffset(Buffer *buffer, i32 lineStart) {
     l++;
   return l - lineStart;
 }
-void JumpParagraphDown(Buffer *buffer) {
-  i32 lineStart = FindLineStart(buffer, buffer->cursor);
-  i32 initialOffset = GetLineOffset(buffer, lineStart);
-  i32 currentOffset = initialOffset;
-
-  while (initialOffset < currentOffset) {
+i32 JumpParagraphDown(Buffer *buffer) {
+  i32 res = buffer->cursor + 1;
+  while (res <= buffer->size) {
+    i32 lineStart = FindLineStart(buffer, res);
+    i32 lineEnd = FindLineEnd(buffer, res);
+    if (lineStart == lineEnd)
+      return res;
+    res = lineEnd + 1;
   }
+  return res;
 }
-void JumpParagraphUp(Buffer *buffer) {}
 
-// TODO: what the fuck is this? what was in my head when I wrote this
+i32 JumpParagraphUp(Buffer *buffer) {
+
+  i32 res = buffer->cursor - 1;
+  while (res > 0){
+    i32 lineStart = FindLineStart(buffer, res);
+    i32 lineEnd = FindLineEnd(buffer, res);
+    if (lineStart == lineEnd)
+      return res;
+    res = lineStart - 1;
+  }
+  return res;
+}
+
+// TODO: this could be optimized, no need to traverse whole file for each selection line
 i32 GetLineLength(Buffer *text, i32 line) {
   i32 currentLine = 0;
   i32 currentLineLength = 0;

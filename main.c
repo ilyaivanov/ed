@@ -203,6 +203,10 @@ void AppendCharIntoCommand(char ch) {
     buffer.cursor = buffer.size;
     offset.target = (GetPageHeight() - textRect.height);
   }
+  if (IsCommand("}"))
+    SetCursorPosition(JumpParagraphDown(&buffer));
+  if (IsCommand("{"))
+    SetCursorPosition(JumpParagraphUp(&buffer));
 
   if (mode == Visual) {
     if (IsCommand("d")) {
@@ -292,7 +296,7 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     break;
   case WM_CHAR:
     char ch = (char)wParam;
-    if (ch >= 'A' && ch <= 'z' || ch == ' ') {
+    if (ch >= ' ' && ch <= MAX_CHAR_CODE) {
       if (mode == Normal || mode == Visual)
         AppendCharIntoCommand(ch);
       else if (mode == Insert) {
