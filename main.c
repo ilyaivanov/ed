@@ -241,13 +241,6 @@ void AppendCharIntoCommand(char ch) {
       int to = JumpWordForward(&buffer) - 1;
       RemoveChars(&buffer, from, to);
     }
-    if (IsCommand("A")) {
-      buffer.cursor = FindLineStart(&buffer, buffer.cursor);
-      while (buffer.cursor < buffer.size && IsWhitespace(buffer.content[buffer.cursor]))
-        buffer.cursor++;
-
-      mode = Insert;
-    }
     if (IsCommand("O")) {
       i32 lineStart = FindLineStart(&buffer, buffer.cursor);
       InsertCharAt(&buffer, lineStart, '\n');
@@ -274,6 +267,29 @@ void AppendCharIntoCommand(char ch) {
     if (IsCommand("a")) {
       buffer.cursor = MaxI32(buffer.cursor - 1, 0);
       mode = Insert;
+    }
+    if (IsCommand("A")) {
+      buffer.cursor = FindLineStart(&buffer, buffer.cursor);
+      while (buffer.cursor < buffer.size && IsWhitespace(buffer.content[buffer.cursor]))
+        buffer.cursor++;
+
+      mode = Insert;
+    }
+    if (IsCommand("C")) {
+      i32 start = FindLineStart(&buffer, buffer.cursor);
+      i32 end = FindLineEnd(&buffer, buffer.cursor) - 1;
+      if (start != end) {
+        RemoveChars(&buffer, buffer.cursor, end);
+      }
+      mode = Insert;
+    }
+    if (IsCommand("D")) {
+      i32 start = FindLineStart(&buffer, buffer.cursor);
+      i32 end = FindLineEnd(&buffer, buffer.cursor) - 1;
+      if (start != end) {
+        RemoveChars(&buffer, buffer.cursor, end);
+        buffer.cursor -= 1;
+      }
     }
 
     if (IsCommand("tt")) {
@@ -522,6 +538,7 @@ void Draw() {
 inline i64 EllapsedMs(i64 start) {
   return (i64)((f32)(GetPerfCounter() - start) * 1000.0f / (f32)GetPerfFrequency());
 }
+
 int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd) {
   (void)hPrevInstance;
   (void)lpCmdLine;
