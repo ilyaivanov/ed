@@ -7,35 +7,16 @@ typedef struct StringBuffer {
   i32 capacity;
 } StringBuffer;
 
-StringBuffer *currentFile;
-
-inline void MoveBytesLeft(char *ptr, int length) {
-  for (int i = 0; i < length - 1; i++) {
-    ptr[i] = ptr[i + 1];
-  }
-}
-
-inline void PlaceLineEnd() {
-  if (currentFile->content)
-    *(currentFile->content + currentFile->size) = '\0';
-}
-
-void RemoveCharAt(i32 at) {
-  MoveBytesLeft(currentFile->content + at, currentFile->size - at);
-  currentFile->size--;
-  PlaceLineEnd();
-}
-
-i32 FindLineStart(i32 pos) {
-  while (pos > 0 && currentFile->content[pos - 1] != '\n')
+i32 FindLineStart(StringBuffer *buffer, i32 pos) {
+  while (pos > 0 && buffer->content[pos - 1] != '\n')
     pos--;
 
   return pos;
 }
 
-i32 FindLineEnd(i32 pos) {
-  i32 textSize = currentFile->size;
-  char *text = currentFile->content;
+i32 FindLineEnd(StringBuffer *buffer, i32 pos) {
+  i32 textSize = buffer->size;
+  char *text = buffer->content;
   while (pos < textSize && text[pos] != '\n')
     pos++;
 
@@ -52,6 +33,10 @@ void RemoveChars(StringBuffer *string, int from, int to) {
 
   // Update size after removing the characters
   string->size -= (to - from + 1);
+}
+
+void RemoveCharAt(StringBuffer *buffer, i32 at) {
+  RemoveChars(buffer, at, at);
 }
 
 StringBuffer ReadFileIntoDoubledSizedBuffer(char *path) {

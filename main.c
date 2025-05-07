@@ -1,7 +1,6 @@
 #include "anim.c"
 #include "font.c"
 #include "math.c"
-#include "string.c"
 #include "vim.c"
 #include "win32.c"
 #include <math.h>
@@ -60,8 +59,8 @@ CursorPos GetPositionOffset(i32 pos) {
   CursorPos res = {0};
   res.global = -1;
 
-  i32 textSize = buffer.file.size;
-  char *text = buffer.file.content;
+  i32 textSize = buffer.size;
+  char *text = buffer.content;
 
   if (pos >= 0 && pos <= textSize) {
     res.global = pos;
@@ -86,15 +85,15 @@ CursorPos GetCursorPosition() {
 
 i32 GetPageHeight() {
   int rows = 2;
-  for (i32 i = 0; i < buffer.file.size; i++) {
-    if (buffer.file.content[i] == '\n')
+  for (i32 i = 0; i < buffer.size; i++) {
+    if (buffer.content[i] == '\n')
       rows++;
   }
   return rows * lineHeightPx;
 }
 
 void SetCursorPosition(i32 v) {
-  buffer.cursor = Clampi32(v, 0, buffer.file.size);
+  buffer.cursor = Clampi32(v, 0, buffer.size);
   CursorPos cursor = GetCursorPosition();
 
   float lineToLookAhead = 5.0f * lineHeightPx;
@@ -107,18 +106,18 @@ void SetCursorPosition(i32 v) {
 }
 
 void MoveDown() {
-  i32 next = FindLineEnd(buffer.cursor);
-  if (next != buffer.file.size) {
-    i32 nextNextLine = FindLineEnd(next + 1);
+  i32 next = FindLineEnd(&buffer, buffer.cursor);
+  if (next != buffer.size) {
+    i32 nextNextLine = FindLineEnd(&buffer, next + 1);
     CursorPos cursor = GetCursorPosition();
     SetCursorPosition(MinI32(next + cursor.lineOffset + 1, nextNextLine));
   }
 }
 
 void MoveUp() {
-  i32 prev = FindLineStart(buffer.cursor);
+  i32 prev = FindLineStart(&buffer, buffer.cursor);
   if (prev != 0) {
-    i32 prevPrevLine = FindLineStart(prev - 1);
+    i32 prevPrevLine = FindLineStart(&buffer, prev - 1);
     CursorPos cursor = GetCursorPosition();
     i32 pos = prevPrevLine + cursor.lineOffset;
 
@@ -128,13 +127,13 @@ void MoveUp() {
 
 void RemoveCurrentChar() {
   if (buffer.cursor > 0) {
-    RemoveCharAt(buffer.cursor - 1);
+    RemoveCharAt(&buffer, buffer.cursor - 1);
     buffer.cursor--;
   }
 }
 
 void SaveFile() {
-  WriteMyFile(filePath, buffer.file.content, buffer.file.size);
+  WriteMyFile(filePath, buffer.content, buffer.size);
   isSaved = 1;
 }
 
@@ -145,7 +144,7 @@ void MoveLeft() {
   buffer.cursor = MaxI32(buffer.cursor - 1, 0);
 }
 void MoveRight() {
-  buffer.cursor = MinI32(buffer.cursor + 1, buffer.file.size);
+  buffer.cursor = MinI32(buffer.cursor + 1, buffer.size);
 }
 
 i32 hasMatchedAnyCommand;
@@ -201,7 +200,7 @@ void AppendCharIntoCommand(char ch) {
     offset.target = 0;
   }
   if (IsCommand("G")) {
-    buffer.cursor = buffer.file.size;
+    buffer.cursor = buffer.size;
     offset.target = (GetPageHeight() - textRect.height);
   }
 
@@ -209,51 +208,50 @@ void AppendCharIntoCommand(char ch) {
     if (IsCommand("d")) {
       u32 selectionLeft = MinI32(buffer.selectionStart, buffer.cursor);
       u32 selectionRight = MaxI32(buffer.selectionStart, buffer.cursor);
-      RemoveChars(&buffer.file, selectionLeft, selectionRight);
+      RemoveChars(&buffer, selectionLeft, selectionRight);
       buffer.cursor = MinI32(buffer.cursor, buffer.selectionStart);
       mode = Normal;
     }
     if (IsCommand("o")) {
-
       i32 temp = buffer.cursor;
       buffer.cursor = buffer.selectionStart;
       buffer.selectionStart = temp;
     }
-  } else {
+  } else if (mode == Normal) {
     if (IsCommand("dl") || IsCommand("dd")) {
 
-      int from = FindLineStart(buffer.cursor);
-      int to = FindLineEnd(buffer.cursor);
-      RemoveChars(&buffer.file, from, to);
+      int from = FindLineStart(&buffer, buffer.cursor);
+      int to = FindLineEnd(&buffer, buffer.cursor);
+      RemoveChars(&buffer, from, to);
 
-      buffer.cursor = MinI32(buffer.cursor, buffer.file.size);
+      buffer.cursor = MinI32(buffer.cursor, buffer.size);
     }
 
     if (IsCommand("dW")) {
       int from = buffer.cursor;
       int to = JumpWordWithPunctuationForward(&buffer) - 1;
-      RemoveChars(&buffer.file, from, to);
+      RemoveChars(&buffer, from, to);
     }
     if (IsCommand("dw")) {
       int from = buffer.cursor;
       int to = JumpWordForward(&buffer) - 1;
-      RemoveChars(&buffer.file, from, to);
+      RemoveChars(&buffer, from, to);
     }
     if (IsCommand("A")) {
-      buffer.cursor = FindLineStart(buffer.cursor);
-      while (buffer.cursor < buffer.file.size && IsWhitespace(buffer.file.content[buffer.cursor]))
+      buffer.cursor = FindLineStart(&buffer, buffer.cursor);
+      while (buffer.cursor < buffer.size && IsWhitespace(buffer.content[buffer.cursor]))
         buffer.cursor++;
 
       mode = Insert;
     }
     if (IsCommand("O")) {
-      i32 lineStart = FindLineStart(buffer.cursor);
+      i32 lineStart = FindLineStart(&buffer, buffer.cursor);
       InsertCharAt(&buffer, lineStart, '\n');
       buffer.cursor = lineStart;
       mode = Insert;
     }
     if (IsCommand("o")) {
-      i32 lineEnd = FindLineEnd(buffer.cursor);
+      i32 lineEnd = FindLineEnd(&buffer, buffer.cursor);
       InsertCharAt(&buffer, lineEnd, '\n');
       buffer.cursor = lineEnd + 1;
       mode = Insert;
@@ -263,7 +261,7 @@ void AppendCharIntoCommand(char ch) {
       buffer.selectionStart = buffer.cursor;
     }
     if (IsCommand("I")) {
-      buffer.cursor = FindLineEnd(buffer.cursor);
+      buffer.cursor = FindLineEnd(&buffer, buffer.cursor);
       mode = Insert;
     }
     if (IsCommand("i")) {
@@ -279,10 +277,10 @@ void AppendCharIntoCommand(char ch) {
       isRunning = 0;
     }
   }
-  if (hasMatchedAnyCommand) 
+
+  if (hasMatchedAnyCommand)
     ClearCommand();
 }
-
 
 LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
   switch (message) {
@@ -495,9 +493,9 @@ void Draw() {
   PaintRect(cursorX, cursorY, font.charWidth, lineHeightPx, cursorColor);
   i32 charShift = (lineHeightPx - font.charHeight) / 2;
 
-  for (i32 i = 0; i < buffer.file.size; i++) {
+  for (i32 i = 0; i < buffer.size; i++) {
     i32 charY = y + charShift;
-    char ch = buffer.file.content[i];
+    char ch = buffer.content[i];
     if (ch == '\n') {
       x = padding;
       y += lineHeightPx;
@@ -530,8 +528,7 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
   HWND window = OpenWindow(OnEvent, colorsBg, "Editor");
 
   dc = GetDC(window);
-  buffer.file = ReadFileIntoDoubledSizedBuffer(filePath);
-  currentFile = &buffer.file;
+  buffer = ReadFileIntoDoubledSizedBuffer(filePath);
 
   InitAnimations();
   Arena fontArena = CreateArena(500 * 1024);

@@ -1,13 +1,63 @@
 #pragma once
 
-#include "string.c"
 
 typedef struct Buffer {
-  StringBuffer file;
+  char *content;
+  i32 size;
+  i32 capacity;
+
   i32 cursor;
   i32 selectionStart;
 } Buffer;
 
+i32 FindLineStart(Buffer *buffer, i32 pos) {
+  while (pos > 0 && buffer->content[pos - 1] != '\n')
+    pos--;
+
+  return pos;
+}
+
+i32 FindLineEnd(Buffer *buffer, i32 pos) {
+  i32 textSize = buffer->size;
+  char *text = buffer->content;
+  while (pos < textSize && text[pos] != '\n')
+    pos++;
+
+  return pos;
+}
+
+void RemoveChars(Buffer *string, int from, int to) {
+  // Calculate the number of characters to shift
+  char *content = string->content;
+  int num_to_shift = string->size - (to + 1);
+
+  // Use memmove to shift the remaining characters
+  memmove(content + from, content + to + 1, num_to_shift);
+
+  // Update size after removing the characters
+  string->size -= (to - from + 1);
+}
+
+void RemoveCharAt(Buffer *buffer, i32 at) {
+  RemoveChars(buffer, at, at);
+}
+
+Buffer ReadFileIntoDoubledSizedBuffer(char *path) {
+  u32 fileSize = GetMyFileSize(path);
+  char *file = VirtualAllocateMemory(fileSize);
+  ReadFileInto(path, fileSize, file);
+
+  char *res = VirtualAllocateMemory(fileSize * 2);
+  int fileSizeAfter = 0;
+  for (i32 i = 0; i < fileSize; i++) {
+    if (file[i] != '\r')
+      res[fileSizeAfter++] = file[i];
+  }
+  VirtualFreeMemory(file);
+  Buffer resFile = {.capacity = fileSize * 2, .size = fileSizeAfter, .content = res};
+
+  return resFile;
+}
 u32 IsWhitespace(char ch) {
   return ch == ' ' || ch == '\n';
 }
@@ -28,8 +78,8 @@ u32 IsPunctuation(char ch) {
   return 0;
 }
 i32 JumpWordWithPunctuationForward(Buffer *buffer) {
-  char *text = buffer->file.content;
-  i32 size = buffer->file.size;
+  char *text = buffer->content;
+  i32 size = buffer->size;
   i32 pos = buffer->cursor;
   while (pos < size && !IsWhitespace(text[pos]))
     pos++;
@@ -41,7 +91,7 @@ i32 JumpWordWithPunctuationForward(Buffer *buffer) {
 }
 
 i32 JumpWordWithPunctuationBackward(Buffer *buffer) {
-  char *text = buffer->file.content;
+  char *text = buffer->content;
   i32 pos = MaxI32(buffer->cursor - 1, 0);
   while (pos > 0 && IsWhitespace(text[pos]))
     pos--;
@@ -53,9 +103,9 @@ i32 JumpWordWithPunctuationBackward(Buffer *buffer) {
 }
 
 i32 JumpWordBackward(Buffer *buffer) {
-  char *text = buffer->file.content;
+  char *text = buffer->content;
   i32 pos = MaxI32(buffer->cursor - 1, 0);
-  i32 size = buffer->file.size;
+  i32 size = buffer->size;
   i32 isStartedAtWhitespace = IsWhitespace(text[pos]);
 
   while (pos > 0 && IsWhitespace(text[pos]))
@@ -78,9 +128,9 @@ i32 JumpWordBackward(Buffer *buffer) {
   return pos;
 }
 i32 JumpWordForward(Buffer *buffer) {
-  char *text = buffer->file.content;
+  char *text = buffer->content;
   i32 pos = buffer->cursor;
-  i32 size = buffer->file.size;
+  i32 size = buffer->size;
   if (IsWhitespace(text[pos])) {
     while (pos < size && IsWhitespace(text[pos]))
       pos++;
@@ -100,14 +150,14 @@ i32 JumpWordForward(Buffer *buffer) {
 }
 
 void InsertCharAt(Buffer *buffer, i32 pos, char ch) {
-  i32 textSize = buffer->file.size;
-  char *text = currentFile->content;
+  i32 textSize = buffer->size;
+  char *text = buffer->content;
 
   memmove(text + pos + 1, text + pos, textSize - pos);
 
   text[pos] = ch;
 
-  buffer->file.size++;
+  buffer->size++;
 }
 
 void InsertCharAtCursor(Buffer *buffer, char ch) {
@@ -117,12 +167,12 @@ void InsertCharAtCursor(Buffer *buffer, char ch) {
 
 i32 GetLineOffset(Buffer *buffer, i32 lineStart) {
   i32 l = lineStart;
-  while (buffer->file.content[l] == ' ')
+  while (buffer->content[l] == ' ')
     l++;
   return l - lineStart;
 }
 void JumpParagraphDown(Buffer *buffer) {
-  i32 lineStart = FindLineStart(buffer->cursor);
+  i32 lineStart = FindLineStart(buffer, buffer->cursor);
   i32 initialOffset = GetLineOffset(buffer, lineStart);
   i32 currentOffset = initialOffset;
 
@@ -135,8 +185,8 @@ void JumpParagraphUp(Buffer *buffer) {}
 i32 GetLineLength(Buffer *text, i32 line) {
   i32 currentLine = 0;
   i32 currentLineLength = 0;
-  for (i32 i = 0; i < text->file.size; i++) {
-    if (text->file.content[i] == '\n') {
+  for (i32 i = 0; i < text->size; i++) {
+    if (text->content[i] == '\n') {
       if (currentLine == line)
         return currentLineLength + 1;
 
