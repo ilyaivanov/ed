@@ -93,6 +93,14 @@ i32 GetPageHeight() {
   return rows * lineHeightPx;
 }
 
+void CenterViewOnCursor() {
+
+  CursorPos cursor = GetCursorPosition();
+  float cursorPos = cursor.line * lineHeightPx;
+
+  offset.target = cursorPos-(float)textRect.height / 2.0f;
+}
+
 void SetCursorPosition(i32 v) {
   buffer.cursor = Clampi32(v, 0, buffer.size - 1);
   CursorPos cursor = GetCursorPosition();
@@ -202,7 +210,7 @@ void AppendCharIntoCommand(char ch) {
   }
   if (IsCommand("G")) {
     buffer.cursor = buffer.size - 1;
-     offset.target = (GetPageHeight() - textRect.height);
+    offset.target = (GetPageHeight() - textRect.height);
   }
   if (IsCommand("}"))
     SetCursorPosition(JumpParagraphDown(&buffer));
@@ -234,7 +242,6 @@ void AppendCharIntoCommand(char ch) {
       int from = FindLineStart(&buffer, buffer.cursor);
       int to = FindLineEnd(&buffer, buffer.cursor);
       RemoveChars(&buffer, from, to);
-
 
       SetCursorPosition(buffer.cursor);
     }
@@ -326,6 +333,9 @@ void AppendCharIntoCommand(char ch) {
       if (textFromClipboard)
         VirtualFreeMemory(textFromClipboard);
     }
+    if (IsCommand("zz")) 
+      CenterViewOnCursor();
+
     if (IsCommand("tt")) {
       PostQuitMessage(0);
       isRunning = 0;
