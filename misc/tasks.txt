@@ -14,13 +14,19 @@ OverallProgress
 
 Timeline
 Week 2
+08.05 Thursday
+  - Save file and show if buffer is not saved
+  - Assign file path to a buffer
+
+  
 07.05 Wednesday
   - Visual mode
      - d o y
   - Remove code duplication in command handling
   - Merge string.c into vim.c
   - } { C D 
-  - yy p P
+  - yy p P zz x backspace
+  - show three splits 
 
 06.05 Tueday
   - O o
@@ -53,12 +59,9 @@ Things I use
   - d y c C S a i A I w b W B ib a" a( a{ r R u C-r
   - o O 
 
-Notes
-  - While working on dd\dl feature, what motions have I used?
-    - G o } C
-    - visual line mode to select and yank region
-    - switch between files
-    - taking notes in a split
-    - format code and run the app
-    - undo/redo
-    - zz (ignores max offset, always centers on the line)
+Backlog
+  - visual line mode to select and yank region
+  - switch between files
+  - search
+  - format code and run the app
+  - undo/redo

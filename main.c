@@ -24,6 +24,8 @@ u32 colorsCursorLineVisual = 0x202020;
 u32 colorsSelection = 0x253340;
 u32 colorsScrollbar = 0x888888;
 
+float scrollbarWidth = 10;
+
 Rect leftRect;
 Spring leftOffset;
 
@@ -49,7 +51,6 @@ char* rightFilePath = "..\\vim.c";
 typedef enum EdFile { Left, Middle, Right } EdFile;
 
 Buffer* selectedBuffer;
-char* currentFilePath;
 Spring* selectedOffset;
 Rect* selectedRect;
 EdFile selectedFile;
@@ -58,19 +59,16 @@ void SelectFile(EdFile file) {
   selectedFile = file;
   if (file == Left) {
     selectedBuffer = &leftBuffer;
-    currentFilePath = leftFilePath;
     selectedOffset = &leftOffset;
     selectedRect = &leftRect;
   }
   if (file == Right) {
     selectedBuffer = &rightBuffer;
-    currentFilePath = rightFilePath;
     selectedOffset = &rightOffset;
     selectedRect = &rightRect;
   }
   if (file == Middle) {
     selectedBuffer = &middleBuffer;
-    currentFilePath = middleFilePath;
     selectedOffset = &middleOffset;
     selectedRect = &middleRect;
   }
@@ -85,7 +83,6 @@ Mode mode = Normal;
 BITMAPINFO bitmapInfo;
 MyBitmap canvas;
 HDC dc;
-i32 isSaved = 1;
 char currentCommand[512];
 i32 currentCommandLen;
 i32 visibleCommandLen;
@@ -188,9 +185,9 @@ void RemoveCurrentChar() {
   }
 }
 
-void SaveFile() {
-  WriteMyFile(currentFilePath, selectedBuffer->content, selectedBuffer->size);
-  isSaved = 1;
+void SaveSelectedFile() {
+  WriteMyFile(selectedBuffer->filePath, selectedBuffer->content, selectedBuffer->size);
+  selectedBuffer->isSaved = 1;
 }
 
 inline BOOL IsKeyPressed(u32 code) {
@@ -301,7 +298,8 @@ void AppendCharIntoCommand(char ch) {
     }
     if (IsCommand("dw")) {
       int from = selectedBuffer->cursor;
-      int to = JumpWordForward(selectedBuffer) - 1;
+      int lineEnd = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
+      int to = MinI32(JumpWordForward(selectedBuffer) - 1, lineEnd - 1);
       RemoveChars(selectedBuffer, from, to);
     }
     if (IsCommand("O")) {
@@ -415,7 +413,7 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
       else if (mode == Insert) {
         if (ch < MAX_CHAR_CODE && ch >= ' ')
           InsertCharAtCursor(selectedBuffer, ch);
-        isSaved = 0;
+        selectedBuffer->isSaved = 0;
       }
     }
     break;
@@ -443,6 +441,8 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
         SelectFile(Middle);
       if (wParam == '3' && IsKeyPressed(VK_MENU))
         SelectFile(Right);
+      if (wParam == 'S' && IsKeyPressed(VK_CONTROL))
+        SaveSelectedFile();
       else if (wParam == VK_F11) {
         isFullscreen = !isFullscreen;
         SetFullscreen(window, isFullscreen);
@@ -541,7 +541,7 @@ void RectFillRightBorder(Rect r, i32 width, u32 color) {
 void DrawFooter() {
   RectFill(footerRect, colorsFooter);
 
-  char* label = currentFilePath;
+  char* label = selectedBuffer->filePath;
   int len = strlen(label);
   int x = footerPadding;
   int y = footerRect.y;
@@ -550,7 +550,7 @@ void DrawFooter() {
     x += font.charWidth;
     label++;
   }
-  if (!isSaved)
+  if (!selectedBuffer->isSaved)
     CopyMonochromeTextureRectTo(&canvas, &footerRect, &font.textures['*'], x, y, 0xffffff);
 
   int charsToShow = currentCommandLen > 0 ? currentCommandLen : visibleCommandLen;
@@ -565,7 +565,6 @@ void DrawFooter() {
 
 void DrawScrollBar(Rect rect, Buffer* buffer, Spring* offset) {
   f32 pageHeight = (f32)GetPageHeight(buffer);
-  float scrollbarWidth = 10;
   if (rect.height < pageHeight) {
     f32 height = (f32)rect.height;
     f32 scrollOffset = (f32)offset->current;
@@ -635,6 +634,10 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset, EdFile file) {
     cursorColor = colorsCursorUnfocused;
     lineColor = colorsCursorLineUnfocused;
   }
+
+  if (!buffer->isSaved)
+    PaintRect(rect.x + rect.width - 30 - scrollbarWidth, rect.y, 20, 10, 0x882222);
+
   // cursor line background
   PaintRect(rect.x, cursorY, rect.width, lineHeightPx, lineColor);
 
@@ -705,8 +708,16 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
 
   dc = GetDC(mainWindow);
   leftBuffer = ReadFileIntoDoubledSizedBuffer(leftFilePath);
+  leftBuffer.filePath = leftFilePath;
+  leftBuffer.isSaved = 1;
+
   middleBuffer = ReadFileIntoDoubledSizedBuffer(middleFilePath);
+  middleBuffer.filePath = middleFilePath;
+  middleBuffer.isSaved = 1;
+
   rightBuffer = ReadFileIntoDoubledSizedBuffer(rightFilePath);
+  rightBuffer.filePath = rightFilePath;
+  rightBuffer.isSaved = 1;
 
   SelectFile(Left);
   InitAnimations();

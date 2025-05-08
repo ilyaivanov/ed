@@ -7,6 +7,9 @@ typedef struct Buffer {
 
   i32 cursor;
   i32 selectionStart;
+
+  i32 isSaved;
+  char* filePath;
 } Buffer;
 
 i32 FindLineStart(Buffer* buffer, i32 pos) {
