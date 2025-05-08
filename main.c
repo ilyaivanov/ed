@@ -4,10 +4,15 @@
 #include "vim.c"
 #include "win32.c"
 #include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
 
-#define IS_RIGHT_BUFFER_VISIBLE 1
+#define IS_RIGHT_BUFFER_VISIBLE 0
 
 HWND mainWindow;
+int isRunning = 1;
+int isFullscreen = 0;
+
 // u32 colorsBg = 0x0F1419;
 u32 colorsBg = 0x121212;
 u32 colorsFont = 0xE6E6E6;
@@ -47,7 +52,7 @@ Buffer leftBuffer;
 char* leftFilePath = "..\\misc\\tasks.txt";
 
 Buffer middleBuffer;
-char* middleFilePath = "..\\main.c";
+char* middleFilePath = "..\\vim.c";
 
 Buffer rightBuffer;
 char* rightFilePath = "..\\vim.c";
@@ -60,7 +65,7 @@ Rect* selectedRect;
 EdFile selectedFile;
 
 void SelectFile(EdFile file) {
-  if(!IS_RIGHT_BUFFER_VISIBLE && file == Right)
+  if (!IS_RIGHT_BUFFER_VISIBLE && file == Right)
     return;
   selectedFile = file;
   if (file == Left) {
@@ -79,8 +84,6 @@ void SelectFile(EdFile file) {
     selectedRect = &middleRect;
   }
 }
-int isRunning = 1;
-int isFullscreen = 1;
 
 typedef enum Mode { Normal, Insert, Visual, VisualLine } Mode;
 f32 appTimeMs = 0;
@@ -212,6 +215,33 @@ void SaveSelectedFile() {
   WriteMyFile(selectedBuffer->filePath, selectedBuffer->content, selectedBuffer->size);
   selectedBuffer->isSaved = 1;
 }
+void FormatSelectedFile() {
+
+  SaveSelectedFile();
+  char* style = "--style=\"{AllowShortFunctionsOnASingleLine : \"Empty\", "
+                "ColumnLimit: 100, PointerAlignment: \"Left\"}\"";
+  char cmd[512] = {0};
+  sprintf(cmd, "cmd /c clang-format %s -cursor=%d %s", style, selectedBuffer->cursor,
+          selectedBuffer->filePath);
+
+  i32 len = 0;
+  char* output = VirtualAllocateMemory(selectedBuffer->size + 200);
+  RunCommand(cmd, output, &len);
+
+  char* nextTextStart = output;
+  while (*nextTextStart != '\n')
+    nextTextStart++;
+  nextTextStart++;
+
+  // 12 here is the index of new cursor position in JSON response { "Cursor": 36
+  // I don;t want to parse entire JSON yet
+  int newCursor = atoi(output + 12);
+
+  memmove(selectedBuffer->content, nextTextStart, strlen(nextTextStart));
+  selectedBuffer->size = strlen(nextTextStart);
+  selectedBuffer->cursor = newCursor;
+  VirtualFreeMemory(output);
+}
 
 inline BOOL IsKeyPressed(u32 code) {
   return (GetKeyState(code) >> 15) & 1;
@@ -243,6 +273,9 @@ void ClearCommand() {
 }
 
 void AppendCharIntoCommand(char ch) {
+  if (ch == ' ')
+    ch = '_';
+
   currentCommand[currentCommandLen++] = ch;
   visibleCommandLen = 0;
   hasMatchedAnyCommand = 0;
@@ -409,6 +442,9 @@ void AppendCharIntoCommand(char ch) {
     }
     if (IsCommand("zz"))
       CenterViewOnCursor();
+
+    if (IsCommand("zf") || IsCommand("_f"))
+      FormatSelectedFile();
 
     if (IsCommand("tt")) {
       PostQuitMessage(0);
@@ -638,7 +674,7 @@ void DrawSelection(Buffer* buffer, Rect rect, Spring* offset) {
 }
 
 void DrawArea(Rect rect, Buffer* buffer, Spring* offset, EdFile file) {
-  if(rect.width == 0)
+  if (rect.width == 0)
     return;
   i32 startX = rect.x + horizPadding;
   i32 startY = vertPadding - (i32)offset->current;
@@ -735,18 +771,13 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
 
   dc = GetDC(mainWindow);
   leftBuffer = ReadFileIntoDoubledSizedBuffer(leftFilePath);
-  leftBuffer.filePath = leftFilePath;
-  leftBuffer.isSaved = 1;
 
   middleBuffer = ReadFileIntoDoubledSizedBuffer(middleFilePath);
-  middleBuffer.filePath = middleFilePath;
-  middleBuffer.isSaved = 1;
-
+  //
   rightBuffer = ReadFileIntoDoubledSizedBuffer(rightFilePath);
-  rightBuffer.filePath = rightFilePath;
-  rightBuffer.isSaved = 1;
 
-  SelectFile(Left);
+  SelectFile(Middle);
+
   InitAnimations();
   lineHeightPx = RoundI32((f32)font.charHeight * lineHeight);
   i64 startCounter = GetPerfCounter();

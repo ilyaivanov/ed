@@ -33,6 +33,8 @@ typedef struct {
   }
 
 #define Fail(msg) Assert(0)
+#define KB(v) (v * 1024)
+
 inline void* VirtualAllocateMemory(size_t size) {
   return VirtualAlloc(0, size, MEM_COMMIT, PAGE_READWRITE);
 };
@@ -194,4 +196,43 @@ void ClipboardCopy(HWND window, char* text, i32 len) {
 
     CloseClipboard();
   }
+}
+
+void RunCommand(char* cmd, char* output, int* len) {
+  HANDLE hRead, hWrite;
+  SECURITY_ATTRIBUTES sa = {sizeof(SECURITY_ATTRIBUTES), NULL, TRUE};
+
+  if (!CreatePipe(&hRead, &hWrite, &sa, KB(128)))
+    return;
+
+  // Ensure the read handle to the pipe is not inherited.
+  SetHandleInformation(hRead, HANDLE_FLAG_INHERIT, 0);
+
+  PROCESS_INFORMATION pi;
+  STARTUPINFO si = {sizeof(STARTUPINFO)};
+  si.dwFlags = STARTF_USESTDHANDLES;
+  si.hStdOutput = hWrite;
+  si.hStdError = hWrite;
+  si.hStdInput = NULL;
+
+  if (!CreateProcess(NULL, cmd, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+    CloseHandle(hWrite);
+    CloseHandle(hRead);
+    return;
+  }
+
+  CloseHandle(hWrite);
+
+  WaitForSingleObject(pi.hProcess, INFINITE);
+
+  DWORD bytesRead = 0, totalRead = 0;
+  while (ReadFile(hRead, output + totalRead, 1, &bytesRead, NULL) && totalRead < *len - 1) {
+    totalRead += bytesRead;
+  }
+  output[totalRead] = '\0';
+  *len = totalRead;
+
+  CloseHandle(pi.hProcess);
+  CloseHandle(pi.hThread);
+  CloseHandle(hRead);
 }

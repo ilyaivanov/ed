@@ -17,6 +17,7 @@ Week 2
 08.05 Thursday
   - Save file and show if buffer is not saved
   - Assign file path to a buffer
+  - Add Visual Line mode
 
   
 07.05 Wednesday
@@ -60,7 +61,6 @@ Things I use
   - o O 
 
 Backlog
-  - visual line mode to select and yank region
   - switch between files
   - search
   - format code and run the app

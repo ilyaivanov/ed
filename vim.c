@@ -63,7 +63,11 @@ Buffer ReadFileIntoDoubledSizedBuffer(char* path) {
       res[fileSizeAfter++] = file[i];
   }
   VirtualFreeMemory(file);
-  Buffer resFile = {.capacity = fileSize * 2, .size = fileSizeAfter, .content = res};
+  Buffer resFile = {.capacity = fileSize * 2,
+                    .size = fileSizeAfter,
+                    .content = res,
+                    .filePath = path,  
+                    .isSaved = 1};
 
   return resFile;
 }
