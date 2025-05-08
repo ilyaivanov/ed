@@ -38,7 +38,7 @@ i32 footerPadding = 2;
 Rect screen = {0};
 
 Buffer leftBuffer;
-char* leftFilePath = "..\\misc\\vim.txt";
+char* leftFilePath = "..\\misc\\tasks.txt";
 
 Buffer middleBuffer;
 char* middleFilePath = "..\\main.c";
@@ -669,9 +669,10 @@ void Draw() {
   for (i32 i = 0; i < canvas.width * canvas.height; i++)
     canvas.pixels[i] = colorsBg;
 
-  RectFillRightBorder(leftRect, 4, 0x666666);
-  RectFillRightBorder(middleRect, 4, 0x666666);
-  RectFillRightBorder(rightRect, 4, 0x666666);
+  u32 borderColor = 0x222222;
+  RectFillRightBorder(leftRect, 4, borderColor);
+  RectFillRightBorder(middleRect, 4, borderColor);
+  RectFillRightBorder(rightRect, 4, borderColor);
 
   DrawArea(leftRect, &leftBuffer, &leftOffset, Left);
   DrawArea(middleRect, &middleBuffer, &middleOffset, Middle);
