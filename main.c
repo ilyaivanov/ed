@@ -78,7 +78,7 @@ void SelectFile(EdFile file) {
 int isRunning = 1;
 int isFullscreen = 1;
 
-typedef enum Mode { Normal, Insert, Visual } Mode;
+typedef enum Mode { Normal, Insert, Visual, VisualLine } Mode;
 f32 appTimeMs = 0;
 Mode mode = Normal;
 
@@ -123,6 +123,23 @@ CursorPos GetPositionOffset(Buffer* buffer, i32 pos) {
 
     res.lineOffset = pos - lineStartedAt;
   }
+  return res;
+}
+typedef struct SelectionRange {
+  i32 left;
+  i32 right;
+} SelectionRange;
+SelectionRange GetSelectionRange() {
+  i32 selectionLeft = MinI32(selectedBuffer->selectionStart, selectedBuffer->cursor);
+  i32 selectionRight = MaxI32(selectedBuffer->selectionStart, selectedBuffer->cursor);
+  if (mode == VisualLine) {
+    selectionLeft = FindLineStart(selectedBuffer, selectionLeft);
+    selectionRight = FindLineEnd(selectedBuffer, selectionRight);
+  }
+
+  SelectionRange res;
+  res.left = selectionLeft;
+  res.right = selectionRight;
   return res;
 }
 
@@ -263,11 +280,10 @@ void AppendCharIntoCommand(char ch) {
   if (IsCommand("{"))
     SetCursorPosition(JumpParagraphUp(selectedBuffer));
 
-  if (mode == Visual) {
+  if (mode == Visual || mode == VisualLine) {
+    SelectionRange range = GetSelectionRange();
     if (IsCommand("d")) {
-      i32 selectionLeft = MinI32(selectedBuffer->selectionStart, selectedBuffer->cursor);
-      i32 selectionRight = MaxI32(selectedBuffer->selectionStart, selectedBuffer->cursor);
-      RemoveChars(selectedBuffer, selectionLeft, selectionRight);
+      RemoveChars(selectedBuffer, range.left, range.right);
       selectedBuffer->cursor = MinI32(selectedBuffer->cursor, selectedBuffer->selectionStart);
       mode = Normal;
     }
@@ -277,10 +293,7 @@ void AppendCharIntoCommand(char ch) {
       selectedBuffer->selectionStart = temp;
     }
     if (IsCommand("y")) {
-      i32 selectionLeft = MinI32(selectedBuffer->selectionStart, selectedBuffer->cursor);
-      i32 selectionRight = MaxI32(selectedBuffer->selectionStart, selectedBuffer->cursor);
-      ClipboardCopy(mainWindow, selectedBuffer->content + selectionLeft,
-                    selectionRight - selectionLeft + 1);
+      ClipboardCopy(mainWindow, selectedBuffer->content + range.left, range.right - range.left + 1);
       // mode = Normal;
     }
   } else if (mode == Normal) {
@@ -318,6 +331,10 @@ void AppendCharIntoCommand(char ch) {
     }
     if (IsCommand("v")) {
       mode = Visual;
+      selectedBuffer->selectionStart = selectedBuffer->cursor;
+    }
+    if (IsCommand("V")) {
+      mode = VisualLine;
       selectedBuffer->selectionStart = selectedBuffer->cursor;
     }
     if (IsCommand("I")) {
@@ -410,7 +427,7 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
   case WM_CHAR:
     char ch = (char)wParam;
     if (ch >= ' ' && ch <= MAX_CHAR_CODE) {
-      if (mode == Normal || mode == Visual)
+      if (mode == Normal || mode == Visual || mode == VisualLine)
         AppendCharIntoCommand(ch);
       else if (mode == Insert) {
         if (ch < MAX_CHAR_CODE && ch >= ' ')
@@ -453,7 +470,7 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
       } else if (IsKeyPressed(VK_CONTROL) && wParam == 'U') {
         selectedOffset->target -= (float)selectedRect->height / 2.0f;
       }
-    } else if (mode == Visual) {
+    } else if (mode == Visual || mode == VisualLine) {
       if (wParam == VK_ESCAPE)
         mode = Normal;
     }
@@ -586,16 +603,15 @@ void DrawSelection(Buffer* buffer, Rect rect, Spring* offset) {
   u32 bg = colorsSelection;
   i32 x = horizPadding + rect.x;
   i32 y = vertPadding + rect.y - (i32)offset->current;
-  if (mode == Visual) {
-    u32 selectionLeft = MinI32(selectedBuffer->selectionStart, selectedBuffer->cursor);
-    u32 selectionRight = MaxI32(selectedBuffer->selectionStart, selectedBuffer->cursor) + 1;
+  if (mode == Visual || mode == VisualLine) {
+    SelectionRange range = GetSelectionRange();
 
-    CursorPos startPos = GetPositionOffset(buffer, selectionLeft);
-    CursorPos endPos = GetPositionOffset(buffer, selectionRight);
+    CursorPos startPos = GetPositionOffset(buffer, range.left);
+    CursorPos endPos = GetPositionOffset(buffer, range.right);
 
     i32 len = GetLineLength(selectedBuffer, startPos.line);
     i32 maxLen = len - startPos.lineOffset;
-    i32 firstLineLen = MinI32(selectionRight - selectionLeft, maxLen);
+    i32 firstLineLen = MinI32(range.right - range.left, maxLen);
 
     PaintRect(x + startPos.lineOffset * font.charWidth, y + startPos.line * lineHeightPx,
               firstLineLen * font.charWidth, lineHeightPx, bg);
@@ -606,8 +622,8 @@ void DrawSelection(Buffer* buffer, Rect rect, Spring* offset) {
                   lineHeightPx, bg);
       }
 
-      PaintRect(x, y + endPos.line * lineHeightPx, endPos.lineOffset * font.charWidth, lineHeightPx,
-                bg);
+      PaintRect(x, y + endPos.line * lineHeightPx, (endPos.lineOffset + 1) * font.charWidth,
+                lineHeightPx, bg);
     }
   }
 }
@@ -618,17 +634,17 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset, EdFile file) {
   i32 x = startX;
   i32 y = rect.y + startY;
 
-  u32 cursorColor = mode == Normal   ? colorsCursorNormal
-                    : mode == Visual ? colorsCursorVisual
-                                     : colorsCursorInsert;
+  u32 cursorColor = mode == Normal                           ? colorsCursorNormal
+                    : (mode == Visual || mode == VisualLine) ? colorsCursorVisual
+                                                             : colorsCursorInsert;
 
   CursorPos cursor = GetCursorPosition(buffer);
   i32 cursorX = x + font.charWidth * cursor.lineOffset;
   i32 cursorY = y + lineHeightPx * cursor.line;
 
-  u32 lineColor = mode == Normal   ? colorsCursorLineNormal
-                  : mode == Visual ? colorsCursorLineVisual
-                                   : colorsCursorLineInsert;
+  u32 lineColor = mode == Normal                           ? colorsCursorLineNormal
+                  : (mode == Visual || mode == VisualLine) ? colorsCursorLineVisual
+                                                           : colorsCursorLineInsert;
 
   if (file != selectedFile) {
     cursorColor = colorsCursorUnfocused;
