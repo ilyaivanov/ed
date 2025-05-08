@@ -242,6 +242,12 @@ void FormatSelectedFile() {
   selectedBuffer->cursor = newCursor;
   VirtualFreeMemory(output);
 }
+void RunCode(){
+  char* cmd = "cmd /c ..\\misc\\build2.bat";
+  char output[KB(10)] = {0};
+  int len = 0;
+  RunCommand(cmd, output, &len);
+}
 
 inline BOOL IsKeyPressed(u32 code) {
   return (GetKeyState(code) >> 15) & 1;
@@ -443,6 +449,9 @@ void AppendCharIntoCommand(char ch) {
     if (IsCommand("zz"))
       CenterViewOnCursor();
 
+    if (IsCommand("_r"))
+      RunCode();
+
     if (IsCommand("zf") || IsCommand("_f"))
       FormatSelectedFile();
 
@@ -547,7 +556,7 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     footerRect.height = footerHeight;
     footerRect.y = screen.height - footerRect.height;
 
-    leftRect.width = 80 * font.charWidth;
+    leftRect.width = 40 * font.charWidth;
     leftRect.height = canvas.height - footerRect.height;
 
     i32 codeWidth = (screen.width - leftRect.width) / 2;
