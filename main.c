@@ -36,6 +36,8 @@ Rect rightRect;
 Spring rightOffset;
 
 Rect footerRect = {0};
+i32 horizPadding = 20;
+i32 vertPadding = 10;
 i32 footerPadding = 2;
 Rect screen = {0};
 
@@ -582,9 +584,8 @@ void DrawScrollBar(Rect rect, Buffer* buffer, Spring* offset) {
 
 void DrawSelection(Buffer* buffer, Rect rect, Spring* offset) {
   u32 bg = colorsSelection;
-  i32 padding = 10;
-  i32 x = padding + rect.x;
-  i32 y = padding + rect.y - (i32)offset->current;
+  i32 x = horizPadding + rect.x;
+  i32 y = vertPadding + rect.y - (i32)offset->current;
   if (mode == Visual) {
     u32 selectionLeft = MinI32(selectedBuffer->selectionStart, selectedBuffer->cursor);
     u32 selectionRight = MaxI32(selectedBuffer->selectionStart, selectedBuffer->cursor) + 1;
@@ -612,9 +613,8 @@ void DrawSelection(Buffer* buffer, Rect rect, Spring* offset) {
 }
 
 void DrawArea(Rect rect, Buffer* buffer, Spring* offset, EdFile file) {
-  i32 padding = 10;
-  i32 startY = padding - (i32)offset->current;
-  i32 startX = rect.x + padding;
+  i32 startX = rect.x + horizPadding;
+  i32 startY = vertPadding - (i32)offset->current;
   i32 x = startX;
   i32 y = rect.y + startY;
 
