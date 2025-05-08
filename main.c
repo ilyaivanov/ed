@@ -5,6 +5,8 @@
 #include "win32.c"
 #include <math.h>
 
+#define IS_RIGHT_BUFFER_VISIBLE 1
+
 HWND mainWindow;
 // u32 colorsBg = 0x0F1419;
 u32 colorsBg = 0x121212;
@@ -58,6 +60,8 @@ Rect* selectedRect;
 EdFile selectedFile;
 
 void SelectFile(EdFile file) {
+  if(!IS_RIGHT_BUFFER_VISIBLE && file == Right)
+    return;
   selectedFile = file;
   if (file == Left) {
     selectedBuffer = &leftBuffer;
@@ -512,11 +516,16 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
 
     i32 codeWidth = (screen.width - leftRect.width) / 2;
     middleRect.x = leftRect.width;
-    middleRect.width = canvas.width / 3;
+    if (IS_RIGHT_BUFFER_VISIBLE) {
+      middleRect.width = canvas.width / 3;
+      rightRect.width = canvas.width - (leftRect.width + middleRect.width);
+    } else {
+      middleRect.width = canvas.width - leftRect.width;
+    }
+
     middleRect.height = canvas.height - footerRect.height;
 
     rightRect.x = middleRect.x + middleRect.width;
-    rightRect.width = canvas.width - (leftRect.width + middleRect.width);
     rightRect.height = canvas.height - footerRect.height;
   }
   return DefWindowProc(window, message, wParam, lParam);
@@ -629,6 +638,8 @@ void DrawSelection(Buffer* buffer, Rect rect, Spring* offset) {
 }
 
 void DrawArea(Rect rect, Buffer* buffer, Spring* offset, EdFile file) {
+  if(rect.width == 0)
+    return;
   i32 startX = rect.x + horizPadding;
   i32 startY = vertPadding - (i32)offset->current;
   i32 x = startX;
