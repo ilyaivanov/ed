@@ -9,7 +9,7 @@ typedef struct Buffer {
   i32 selectionStart;
 
   i32 isSaved;
-  char* filePath;
+  char filePath[512];
 } Buffer;
 
 i32 FindLineStart(Buffer* buffer, i32 pos) {
@@ -66,8 +66,9 @@ Buffer ReadFileIntoDoubledSizedBuffer(char* path) {
   Buffer resFile = {.capacity = fileSize * 2,
                     .size = fileSizeAfter,
                     .content = res,
-                    .filePath = path,  
                     .isSaved = 1};
+
+  strcpy_s(resFile.filePath, 512, path);
 
   return resFile;
 }

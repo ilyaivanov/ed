@@ -18,8 +18,6 @@ u32 colorsBg = 0x121212;
 u32 colorsFont = 0xE6E6E6;
 u32 colorsFooter = 0x1D1D1D;
 
-u32 colorsCursorUnfocused = 0x666666;
-u32 colorsCursorLineUnfocused = 0x333333;
 
 u32 colorsCursorNormal = 0xFFDC32;
 u32 colorsCursorInsert = 0xFC2837;
@@ -52,10 +50,13 @@ Buffer leftBuffer;
 char* leftFilePath = "..\\misc\\tasks.txt";
 
 Buffer middleBuffer;
-char* middleFilePath = "..\\vim.c";
+char* middleFilePath = "..\\main.c";
 
 Buffer rightBuffer;
 char* rightFilePath = "..\\vim.c";
+
+char* allFiles[] = {"main.c", "font.c",  "anim.c",          "math.c",
+                    "vim.c",  "win32.c", "misc\\tasks.txt", "misc\\build2.bat"};
 
 typedef enum EdFile { Left, Middle, Right } EdFile;
 
@@ -85,7 +86,7 @@ void SelectFile(EdFile file) {
   }
 }
 
-typedef enum Mode { Normal, Insert, Visual, VisualLine } Mode;
+typedef enum Mode { Normal, Insert, Visual, VisualLine, FileSelection } Mode;
 f32 appTimeMs = 0;
 Mode mode = Normal;
 
@@ -242,7 +243,7 @@ void FormatSelectedFile() {
   selectedBuffer->cursor = newCursor;
   VirtualFreeMemory(output);
 }
-void RunCode(){
+void RunCode() {
   char* cmd = "cmd /c ..\\misc\\build2.bat";
   char output[KB(10)] = {0};
   int len = 0;
@@ -285,182 +286,196 @@ void AppendCharIntoCommand(char ch) {
   currentCommand[currentCommandLen++] = ch;
   visibleCommandLen = 0;
   hasMatchedAnyCommand = 0;
-
-  if (IsCommand("j"))
-    MoveDown();
-
-  if (IsCommand("k"))
-    MoveUp();
-
-  if (IsCommand("h"))
-    MoveLeft();
-
-  if (IsCommand("l"))
-    MoveRight();
-
-  if (IsCommand("w"))
-    SetCursorPosition(JumpWordForward(selectedBuffer));
-
-  if (IsCommand("b"))
-    SetCursorPosition(JumpWordBackward(selectedBuffer));
-
-  if (IsCommand("W"))
-    SetCursorPosition(JumpWordWithPunctuationForward(selectedBuffer));
-
-  if (IsCommand("B"))
-    SetCursorPosition(JumpWordWithPunctuationBackward(selectedBuffer));
-
-  if (IsCommand("gg")) {
-    selectedBuffer->cursor = 0;
-    selectedOffset->target = 0;
-  }
-  if (IsCommand("G")) {
-    selectedBuffer->cursor = selectedBuffer->size - 1;
-    selectedOffset->target = (GetPageHeight(selectedBuffer) - selectedRect->height);
-  }
-  if (IsCommand("}"))
-    SetCursorPosition(JumpParagraphDown(selectedBuffer));
-  if (IsCommand("{"))
-    SetCursorPosition(JumpParagraphUp(selectedBuffer));
-
-  if (mode == Visual || mode == VisualLine) {
-    SelectionRange range = GetSelectionRange();
-    if (IsCommand("d")) {
-      RemoveChars(selectedBuffer, range.left, range.right);
-      selectedBuffer->cursor = MinI32(selectedBuffer->cursor, selectedBuffer->selectionStart);
+  if (mode == FileSelection) {
+    char firstChar = currentCommand[0];
+    if (firstChar >= '1' && firstChar <= '9') {
+      SaveSelectedFile();
+      sprintf(selectedBuffer->filePath, "..\\%s", allFiles[firstChar - '1']);
+      VirtualFreeMemory(selectedBuffer->content);
+      *selectedBuffer = ReadFileIntoDoubledSizedBuffer(selectedBuffer->filePath);
       mode = Normal;
+      hasMatchedAnyCommand = 1;
     }
-    if (IsCommand("o")) {
-      i32 temp = selectedBuffer->cursor;
-      selectedBuffer->cursor = selectedBuffer->selectionStart;
-      selectedBuffer->selectionStart = temp;
-    }
-    if (IsCommand("y")) {
-      ClipboardCopy(mainWindow, selectedBuffer->content + range.left, range.right - range.left + 1);
-      // mode = Normal;
-    }
-  } else if (mode == Normal) {
-    if (IsCommand("dl") || IsCommand("dd")) {
+  } else {
+    if (IsCommand("j"))
+      MoveDown();
 
-      int from = FindLineStart(selectedBuffer, selectedBuffer->cursor);
-      int to = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
-      RemoveChars(selectedBuffer, from, to);
+    if (IsCommand("k"))
+      MoveUp();
 
-      SetCursorPosition(selectedBuffer->cursor);
-    }
+    if (IsCommand("h"))
+      MoveLeft();
 
-    if (IsCommand("dW")) {
-      int from = selectedBuffer->cursor;
-      int to = JumpWordWithPunctuationForward(selectedBuffer) - 1;
-      RemoveChars(selectedBuffer, from, to);
-    }
-    if (IsCommand("dw")) {
-      int from = selectedBuffer->cursor;
-      int lineEnd = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
-      int to = MinI32(JumpWordForward(selectedBuffer) - 1, lineEnd - 1);
-      RemoveChars(selectedBuffer, from, to);
-    }
-    if (IsCommand("O")) {
-      i32 lineStart = FindLineStart(selectedBuffer, selectedBuffer->cursor);
-      InsertCharAt(selectedBuffer, lineStart, '\n');
-      selectedBuffer->cursor = lineStart;
-      mode = Insert;
-    }
-    if (IsCommand("o")) {
-      i32 lineEnd = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
-      InsertCharAt(selectedBuffer, lineEnd, '\n');
-      selectedBuffer->cursor = lineEnd + 1;
-      mode = Insert;
-    }
-    if (IsCommand("v")) {
-      mode = Visual;
-      selectedBuffer->selectionStart = selectedBuffer->cursor;
-    }
-    if (IsCommand("V")) {
-      mode = VisualLine;
-      selectedBuffer->selectionStart = selectedBuffer->cursor;
-    }
-    if (IsCommand("I")) {
-      selectedBuffer->cursor = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
-      mode = Insert;
-    }
-    if (IsCommand("i")) {
-      mode = Insert;
-    }
-    if (IsCommand("a")) {
-      selectedBuffer->cursor = MaxI32(selectedBuffer->cursor - 1, 0);
-      mode = Insert;
-    }
-    if (IsCommand("A")) {
-      selectedBuffer->cursor = FindLineStart(selectedBuffer, selectedBuffer->cursor);
-      while (selectedBuffer->cursor < selectedBuffer->size &&
-             IsWhitespace(selectedBuffer->content[selectedBuffer->cursor]))
-        selectedBuffer->cursor++;
+    if (IsCommand("l"))
+      MoveRight();
 
-      mode = Insert;
+    if (IsCommand("w"))
+      SetCursorPosition(JumpWordForward(selectedBuffer));
+
+    if (IsCommand("b"))
+      SetCursorPosition(JumpWordBackward(selectedBuffer));
+
+    if (IsCommand("W"))
+      SetCursorPosition(JumpWordWithPunctuationForward(selectedBuffer));
+
+    if (IsCommand("B"))
+      SetCursorPosition(JumpWordWithPunctuationBackward(selectedBuffer));
+
+    if (IsCommand("gg")) {
+      selectedBuffer->cursor = 0;
+      selectedOffset->target = 0;
     }
-    if (IsCommand("C")) {
-      i32 start = FindLineStart(selectedBuffer, selectedBuffer->cursor);
-      i32 end = FindLineEnd(selectedBuffer, selectedBuffer->cursor) - 1;
-      if (start != end) {
-        RemoveChars(selectedBuffer, selectedBuffer->cursor, end);
+    if (IsCommand("G")) {
+      selectedBuffer->cursor = selectedBuffer->size - 1;
+      selectedOffset->target = (GetPageHeight(selectedBuffer) - selectedRect->height);
+    }
+    if (IsCommand("}"))
+      SetCursorPosition(JumpParagraphDown(selectedBuffer));
+    if (IsCommand("{"))
+      SetCursorPosition(JumpParagraphUp(selectedBuffer));
+
+    if (mode == Visual || mode == VisualLine) {
+      SelectionRange range = GetSelectionRange();
+      if (IsCommand("d")) {
+        RemoveChars(selectedBuffer, range.left, range.right);
+        selectedBuffer->cursor = MinI32(selectedBuffer->cursor, selectedBuffer->selectionStart);
+        mode = Normal;
       }
-      mode = Insert;
-    }
-    if (IsCommand("D")) {
-      i32 start = FindLineStart(selectedBuffer, selectedBuffer->cursor);
-      i32 end = FindLineEnd(selectedBuffer, selectedBuffer->cursor) - 1;
-      if (start != end) {
-        RemoveChars(selectedBuffer, selectedBuffer->cursor, end);
-        selectedBuffer->cursor -= 1;
+      if (IsCommand("o")) {
+        i32 temp = selectedBuffer->cursor;
+        selectedBuffer->cursor = selectedBuffer->selectionStart;
+        selectedBuffer->selectionStart = temp;
       }
-    }
+      if (IsCommand("y")) {
+        ClipboardCopy(mainWindow, selectedBuffer->content + range.left,
+                      range.right - range.left + 1);
+        // mode = Normal;
+      }
+    } else if (mode == Normal) {
+      if (IsCommand("dl") || IsCommand("dd")) {
 
-    if (IsCommand("x")) {
-      if (selectedBuffer->cursor < selectedBuffer->size - 1)
-        RemoveChar(selectedBuffer, selectedBuffer->cursor);
-    }
-    if (IsCommand("yy") || IsCommand("yl")) {
-      i32 start = FindLineStart(selectedBuffer, selectedBuffer->cursor);
-      i32 end = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
-      ClipboardCopy(mainWindow, selectedBuffer->content + start, end - start + 1);
-    }
-    if (IsCommand("p")) {
-      i32 size = 0;
-      char* textFromClipboard = ClipboardPaste(mainWindow, &size);
+        int from = FindLineStart(selectedBuffer, selectedBuffer->cursor);
+        int to = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
+        RemoveChars(selectedBuffer, from, to);
 
-      InsertChars(selectedBuffer, textFromClipboard, size, selectedBuffer->cursor + 1);
-      selectedBuffer->cursor = selectedBuffer->cursor + 1 + size;
+        SetCursorPosition(selectedBuffer->cursor);
+      }
 
-      if (textFromClipboard)
-        VirtualFreeMemory(textFromClipboard);
-    }
+      if (IsCommand("dW")) {
+        int from = selectedBuffer->cursor;
+        int to = JumpWordWithPunctuationForward(selectedBuffer) - 1;
+        RemoveChars(selectedBuffer, from, to);
+      }
+      if (IsCommand("dw")) {
+        int from = selectedBuffer->cursor;
+        int lineEnd = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
+        int to = MinI32(JumpWordForward(selectedBuffer) - 1, lineEnd - 1);
+        RemoveChars(selectedBuffer, from, to);
+      }
+      if (IsCommand("O")) {
+        i32 lineStart = FindLineStart(selectedBuffer, selectedBuffer->cursor);
+        InsertCharAt(selectedBuffer, lineStart, '\n');
+        selectedBuffer->cursor = lineStart;
+        mode = Insert;
+      }
+      if (IsCommand("o")) {
+        i32 lineEnd = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
+        InsertCharAt(selectedBuffer, lineEnd, '\n');
+        selectedBuffer->cursor = lineEnd + 1;
+        mode = Insert;
+      }
+      if (IsCommand("v")) {
+        mode = Visual;
+        selectedBuffer->selectionStart = selectedBuffer->cursor;
+      }
+      if (IsCommand("V")) {
+        mode = VisualLine;
+        selectedBuffer->selectionStart = selectedBuffer->cursor;
+      }
+      if (IsCommand("I")) {
+        selectedBuffer->cursor = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
+        mode = Insert;
+      }
+      if (IsCommand("i")) {
+        mode = Insert;
+      }
+      if (IsCommand("a")) {
+        selectedBuffer->cursor = MaxI32(selectedBuffer->cursor - 1, 0);
+        mode = Insert;
+      }
+      if (IsCommand("A")) {
+        selectedBuffer->cursor = FindLineStart(selectedBuffer, selectedBuffer->cursor);
+        while (selectedBuffer->cursor < selectedBuffer->size &&
+               IsWhitespace(selectedBuffer->content[selectedBuffer->cursor]))
+          selectedBuffer->cursor++;
 
-    if (IsCommand("P")) {
-      i32 size = 0;
-      char* textFromClipboard = ClipboardPaste(mainWindow, &size);
+        mode = Insert;
+      }
+      if (IsCommand("C")) {
+        i32 start = FindLineStart(selectedBuffer, selectedBuffer->cursor);
+        i32 end = FindLineEnd(selectedBuffer, selectedBuffer->cursor) - 1;
+        if (start != end) {
+          RemoveChars(selectedBuffer, selectedBuffer->cursor, end);
+        }
+        mode = Insert;
+      }
+      if (IsCommand("D")) {
+        i32 start = FindLineStart(selectedBuffer, selectedBuffer->cursor);
+        i32 end = FindLineEnd(selectedBuffer, selectedBuffer->cursor) - 1;
+        if (start != end) {
+          RemoveChars(selectedBuffer, selectedBuffer->cursor, end);
+          selectedBuffer->cursor -= 1;
+        }
+      }
 
-      InsertChars(selectedBuffer, textFromClipboard, size, selectedBuffer->cursor);
-      selectedBuffer->cursor = selectedBuffer->cursor + size;
+      if (IsCommand("x")) {
+        if (selectedBuffer->cursor < selectedBuffer->size - 1)
+          RemoveChar(selectedBuffer, selectedBuffer->cursor);
+      }
+      if (IsCommand("yy") || IsCommand("yl")) {
+        i32 start = FindLineStart(selectedBuffer, selectedBuffer->cursor);
+        i32 end = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
+        ClipboardCopy(mainWindow, selectedBuffer->content + start, end - start + 1);
+      }
+      if (IsCommand("p")) {
+        i32 size = 0;
+        char* textFromClipboard = ClipboardPaste(mainWindow, &size);
 
-      if (textFromClipboard)
-        VirtualFreeMemory(textFromClipboard);
-    }
-    if (IsCommand("zz"))
-      CenterViewOnCursor();
+        InsertChars(selectedBuffer, textFromClipboard, size, selectedBuffer->cursor + 1);
+        selectedBuffer->cursor = selectedBuffer->cursor + 1 + size;
 
-    if (IsCommand("_r"))
-      RunCode();
+        if (textFromClipboard)
+          VirtualFreeMemory(textFromClipboard);
+      }
 
-    if (IsCommand("zf") || IsCommand("_f"))
-      FormatSelectedFile();
+      if (IsCommand("P")) {
+        i32 size = 0;
+        char* textFromClipboard = ClipboardPaste(mainWindow, &size);
 
-    if (IsCommand("tt")) {
-      PostQuitMessage(0);
-      isRunning = 0;
+        InsertChars(selectedBuffer, textFromClipboard, size, selectedBuffer->cursor);
+        selectedBuffer->cursor = selectedBuffer->cursor + size;
+
+        if (textFromClipboard)
+          VirtualFreeMemory(textFromClipboard);
+      }
+      if (IsCommand("zz"))
+        CenterViewOnCursor();
+
+      if (IsCommand("_r"))
+        RunCode();
+
+      if (IsCommand("_e"))
+        mode = FileSelection;
+
+      if (IsCommand("_f"))
+        FormatSelectedFile();
+
+      if (IsCommand("tt")) {
+        PostQuitMessage(0);
+        isRunning = 0;
+      }
     }
   }
-
   if (hasMatchedAnyCommand)
     ClearCommand();
 }
@@ -476,18 +491,20 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
   case WM_CHAR:
     char ch = (char)wParam;
     if (ch >= ' ' && ch <= MAX_CHAR_CODE) {
-      if (mode == Normal || mode == Visual || mode == VisualLine)
-        AppendCharIntoCommand(ch);
-      else if (mode == Insert) {
+      if (mode == Insert) {
         if (ch < MAX_CHAR_CODE && ch >= ' ')
           InsertCharAtCursor(selectedBuffer, ch);
         selectedBuffer->isSaved = 0;
-      }
+      } else
+        AppendCharIntoCommand(ch);
     }
     break;
   case WM_SYSKEYDOWN:
   case WM_KEYDOWN:
-    if (mode == Insert) {
+    if (mode == FileSelection) {
+      if (wParam == VK_ESCAPE)
+        mode = Normal;
+    } else if (mode == Insert) {
       if (wParam == VK_ESCAPE)
         mode = Normal;
       if (wParam == VK_RETURN)
@@ -556,7 +573,7 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     footerRect.height = footerHeight;
     footerRect.y = screen.height - footerRect.height;
 
-    leftRect.width = 40 * font.charWidth;
+    leftRect.width = 50 * font.charWidth;
     leftRect.height = canvas.height - footerRect.height;
 
     i32 codeWidth = (screen.width - leftRect.width) / 2;
@@ -702,25 +719,23 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset, EdFile file) {
                   : (mode == Visual || mode == VisualLine) ? colorsCursorLineVisual
                                                            : colorsCursorLineInsert;
 
-  if (file != selectedFile) {
-    cursorColor = colorsCursorUnfocused;
-    lineColor = colorsCursorLineUnfocused;
-  }
-
   if (!buffer->isSaved)
     PaintRect(rect.x + rect.width - 30 - scrollbarWidth, rect.y, 20, 10, 0x882222);
 
-  // cursor line background
-  PaintRect(rect.x, cursorY, rect.width, lineHeightPx, lineColor);
+  int hasCursor =file == selectedFile && mode != FileSelection ;
+  if (hasCursor) {
+    // cursor line background
+    PaintRect(rect.x, cursorY, rect.width, lineHeightPx, lineColor);
 
-  // selection
-  if (selectedFile == file)
-    DrawSelection(buffer, rect, offset);
+    // selection
+    if (selectedFile == file)
+      DrawSelection(buffer, rect, offset);
 
-  // cursor
-  PaintRect(cursorX, cursorY, font.charWidth, lineHeightPx, cursorColor);
-  i32 charShift = (lineHeightPx - font.charHeight) / 2;
+    // cursor
+    PaintRect(cursorX, cursorY, font.charWidth, lineHeightPx, cursorColor);
+  }
 
+    i32 charShift = (lineHeightPx - font.charHeight) / 2;
   for (i32 i = 0; i < buffer->size; i++) {
     i32 charY = y + charShift;
     char ch = buffer->content[i];
@@ -728,12 +743,36 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset, EdFile file) {
       x = startX;
       y += lineHeightPx;
     } else if (ch < MAX_CHAR_CODE && ch >= ' ') {
-      u32 charColor = i == buffer->cursor ? colorsBg : colorsFont;
+      u32 charColor = (i == buffer->cursor && hasCursor) ? colorsBg : colorsFont;
       CopyMonochromeTextureRectTo(&canvas, &rect, &font.textures[ch], x, charY, charColor);
       x += font.charWidth;
     } else {
       PaintRect(x, charY, font.charWidth, lineHeightPx, 0xff0000);
       x += font.charWidth;
+    }
+  }
+  if (mode == FileSelection && buffer == selectedBuffer) {
+    i32 fileBoxWidth = 400;
+    int boxX = rect.x + rect.width / 2 - fileBoxWidth / 2;
+    int boxY = rect.y + 20;
+    PaintRect(boxX, boxY, fileBoxWidth, 600, 0x222222);
+    int boxVpadding = 5;
+    int boxHpadding = 10;
+
+    boxY += boxVpadding;
+    boxX += boxHpadding;
+
+    for (i32 i = 0; i < ArrayLength(allFiles); i++) {
+      char* label = allFiles[i];
+      int textX = boxX;
+      CopyMonochromeTextureRectTo(&canvas, &rect, &font.textures[i + '1'], textX, boxY, 0x888888);
+      textX += font.charWidth * 2;
+      while (*label) {
+        CopyMonochromeTextureRectTo(&canvas, &rect, &font.textures[*label], textX, boxY, 0xffffff);
+        label++;
+        textX += font.charWidth;
+      }
+      boxY += font.charHeight * 1.2;
     }
   }
 
