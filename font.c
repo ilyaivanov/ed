@@ -4,7 +4,7 @@
 #include "win32.c"
 
 typedef struct Arena {
-  u8 *start;
+  u8* start;
   i32 bytesAllocated;
   i32 size;
 } Arena;
@@ -12,30 +12,31 @@ typedef struct Arena {
 inline Arena CreateArena(i32 size) {
   Arena res = {0};
   res.size = size;
-  res.start = (u8 *)VirtualAllocateMemory(res.size);
+  res.start = (u8*)VirtualAllocateMemory(res.size);
   return res;
 }
 
-u8 *ArenaPush(Arena *arena, i32 size) {
-  u8 *res = arena->start + arena->bytesAllocated;
+u8* ArenaPush(Arena* arena, i32 size) {
+  u8* res = arena->start + arena->bytesAllocated;
   arena->bytesAllocated += size;
 
-  //if (arena->bytesAllocated > arena->size)
-   // Fail("Exceeded arena size");
+  // if (arena->bytesAllocated > arena->size)
+  //  Fail("Exceeded arena size");
 
   return res;
 }
 
-void ArenaClear(Arena *arena) { arena->bytesAllocated = 0; }
+void ArenaClear(Arena* arena) {
+  arena->bytesAllocated = 0;
+}
 
 #define MAX_CHAR_CODE 127
 
-void InitBitmapInfo(BITMAPINFO *bitmapInfo, u32 width, u32 height) {
+void InitBitmapInfo(BITMAPINFO* bitmapInfo, u32 width, u32 height) {
   bitmapInfo->bmiHeader.biSize = sizeof(bitmapInfo->bmiHeader);
   bitmapInfo->bmiHeader.biBitCount = 32;
   bitmapInfo->bmiHeader.biWidth = width;
-  bitmapInfo->bmiHeader.biHeight =
-      height; // makes rows go up, instead of going down by default
+  bitmapInfo->bmiHeader.biHeight = height; // makes rows go up, instead of going down by default
   bitmapInfo->bmiHeader.biPlanes = 1;
   bitmapInfo->bmiHeader.biCompression = BI_RGB;
 }
@@ -43,7 +44,7 @@ void InitBitmapInfo(BITMAPINFO *bitmapInfo, u32 width, u32 height) {
 typedef struct MonochromeTexture {
   i32 width;
   i32 height;
-  u8 *pixels;
+  u8* pixels;
 } MonochromeTexture;
 typedef struct FontData {
   MonochromeTexture textures[MAX_CHAR_CODE];
@@ -54,13 +55,12 @@ typedef struct FontData {
 } FontData;
 
 // takes dimensions of destinations, reads rect from source at (0,0)
-inline void CopyRectTo(MyBitmap *sourceT, MonochromeTexture *destination) {
-  u8 *row = (u8 *)destination->pixels +
-            destination->width * (destination->height - 1);
-  u32 *source = (u32 *)sourceT->pixels + sourceT->width * (sourceT->height - 1);
+inline void CopyRectTo(MyBitmap* sourceT, MonochromeTexture* destination) {
+  u8* row = (u8*)destination->pixels + destination->width * (destination->height - 1);
+  u32* source = (u32*)sourceT->pixels + sourceT->width * (sourceT->height - 1);
   for (i32 y = 0; y < destination->height; y += 1) {
-    u8 *pixel = row;
-    u32 *sourcePixel = source;
+    u8* pixel = row;
+    u32* sourcePixel = source;
     for (i32 x = 0; x < destination->width; x += 1) {
       u32 alpha = (*sourcePixel & 0xff) << 24;
       *pixel = (u8)(*sourcePixel | alpha);
@@ -72,33 +72,37 @@ inline void CopyRectTo(MyBitmap *sourceT, MonochromeTexture *destination) {
   }
 }
 
-
-void InitFont(FontData *fontData, char *name, i32 fontSize, Arena *arena) {
+void InitFont(FontData* fontData, char* name, i32 fontSize, Arena* arena) {
 
   HDC deviceContext = CreateCompatibleDC(0);
+  if (!deviceContext)
+    MessageBox(0, "Failed to create device context", "Error", MB_ICONERROR);
+
   BITMAPINFO info = {0};
   int textureSize = 256;
   InitBitmapInfo(&info, textureSize, textureSize);
 
-  void *bits;
-  HBITMAP fontBitmap =
-      CreateDIBSection(deviceContext, &info, DIB_RGB_COLORS, &bits, 0, 0);
+  void* bits;
+  HBITMAP fontBitmap = CreateDIBSection(deviceContext, &info, DIB_RGB_COLORS, &bits, 0, 0);
+  if (!fontBitmap)
+    MessageBox(0, "Failed to create font bitmap", "Error", MB_ICONERROR);
   MyBitmap fontCanvas = {0};
   fontCanvas.height = textureSize;
   fontCanvas.width = textureSize;
-  fontCanvas.pixels = (u32 *)bits;
+  fontCanvas.pixels = (u32*)bits;
 
-  int h = -MulDiv(fontSize, GetDeviceCaps(deviceContext, LOGPIXELSY),
-                  USER_DEFAULT_SCREEN_DPI);
-  HFONT font =
-      CreateFontA(h, 0, 0, 0,
-                  FW_DONTCARE, // Weight
-                  0,           // Italic
-                  0,           // Underline
-                  0,           // Strikeout
-                  DEFAULT_CHARSET, OUT_TT_ONLY_PRECIS, CLIP_DEFAULT_PRECIS,
+  int h = -MulDiv(fontSize, GetDeviceCaps(deviceContext, LOGPIXELSY), USER_DEFAULT_SCREEN_DPI);
+  HFONT font = CreateFontA(h, 0, 0, 0,
+                           FW_DONTCARE, // Weight
+                           0,           // Italic
+                           0,           // Underline
+                           0,           // Strikeout
+                           DEFAULT_CHARSET, OUT_TT_ONLY_PRECIS, CLIP_DEFAULT_PRECIS,
 
-                  PROOF_QUALITY, DEFAULT_PITCH, name);
+                           PROOF_QUALITY, DEFAULT_PITCH, name);
+
+  if (!font)
+    MessageBox(0, "Failed to create font", "Error", MB_ICONERROR);
 
   SelectObject(deviceContext, fontBitmap);
   SelectObject(deviceContext, font);
@@ -115,11 +119,13 @@ void InitFont(FontData *fontData, char *name, i32 fontSize, Arena *arena) {
 
     TextOutW(deviceContext, 0, 0, &ch, len);
 
-    MonochromeTexture *texture = &fontData->textures[ch];
+    MonochromeTexture* texture = &fontData->textures[ch];
     texture->width = size.cx;
     texture->height = size.cy;
 
-    texture->pixels = (u8 *)ArenaPush(arena, texture->height * texture->width);
+    texture->pixels = (u8*)ArenaPush(arena, texture->height * texture->width);
+    if (arena->bytesAllocated >= arena->size)
+      MessageBox(0, "Arena is full", "Error", MB_ICONERROR);
 
     CopyRectTo(&fontCanvas, texture);
   }
@@ -137,7 +143,7 @@ void InitFont(FontData *fontData, char *name, i32 fontSize, Arena *arena) {
   DeleteDC(deviceContext);
 }
 
-inline u32 AlphaBlendColors(u32 from, u32 to, f32 factor){
+inline u32 AlphaBlendColors(u32 from, u32 to, f32 factor) {
   u8 fromR = (u8)((from & 0xff0000) >> 16);
   u8 fromG = (u8)((from & 0x00ff00) >> 8);
   u8 fromB = (u8)((from & 0x0000ff) >> 0);
@@ -169,20 +175,18 @@ inline u32 AlphaBlendGreyscale(u32 destination, u8 source, u32 color) {
   return (blendedR << 16) | (blendedG << 8) | (blendedB << 0);
 }
 
-inline void CopyMonochromeTextureRectTo(const MyBitmap *canvas,
-                                        const Rect *rect,
-                                        MonochromeTexture *sourceT, i32 offsetX,
-                                        i32 offsetY, u32 color) {
-  u32 *row = (u32 *)canvas->pixels + offsetX + offsetY * canvas->width;
-  u8 *source = (u8 *)sourceT->pixels + sourceT->width * (sourceT->height - 1);
+inline void CopyMonochromeTextureRectTo(const MyBitmap* canvas, const Rect* rect,
+                                        MonochromeTexture* sourceT, i32 offsetX, i32 offsetY,
+                                        u32 color) {
+  u32* row = (u32*)canvas->pixels + offsetX + offsetY * canvas->width;
+  u8* source = (u8*)sourceT->pixels + sourceT->width * (sourceT->height - 1);
   for (i32 y = 0; y < sourceT->height; y += 1) {
-    u32 *pixel = row;
-    u8 *sourcePixel = source;
+    u32* pixel = row;
+    u8* sourcePixel = source;
     for (i32 x = 0; x < sourceT->width; x += 1) {
       // stupid fucking logic needs to extracted outside of the loop
-      if (*sourcePixel != 0 && (y + offsetY) > rect->y &&
-          (x + offsetX) > rect->x && (x + offsetX) < (rect->x + rect->width) &&
-          (y + offsetY) < (rect->y + rect->height))
+      if (*sourcePixel != 0 && (y + offsetY) > rect->y && (x + offsetX) > rect->x &&
+          (x + offsetX) < (rect->x + rect->width) && (y + offsetY) < (rect->y + rect->height))
         // *pixel = *sourcePixel;
         *pixel = AlphaBlendGreyscale(*pixel, *sourcePixel, color);
 

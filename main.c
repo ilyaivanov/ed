@@ -18,7 +18,6 @@ u32 colorsBg = 0x121212;
 u32 colorsFont = 0xE6E6E6;
 u32 colorsFooter = 0x1D1D1D;
 
-
 u32 colorsCursorNormal = 0xFFDC32;
 u32 colorsCursorInsert = 0xFC2837;
 u32 colorsCursorVisual = 0x3E9FBE;
@@ -97,6 +96,7 @@ char currentCommand[512];
 i32 currentCommandLen;
 i32 visibleCommandLen;
 FontData font;
+Arena fontArena;
 
 i32 lineHeightPx;
 f32 lineHeight = 1.1;
@@ -153,6 +153,36 @@ SelectionRange GetSelectionRange() {
 
 CursorPos GetCursorPosition(Buffer* buffer) {
   return GetPositionOffset(buffer, buffer->cursor);
+}
+
+void OnLayout() {
+  int footerHeight = font.charHeight + footerPadding * 2;
+  lineHeightPx = RoundI32((f32)font.charHeight * lineHeight);
+  footerRect.width = screen.width;
+  footerRect.height = footerHeight;
+  footerRect.y = screen.height - footerRect.height;
+
+  leftRect.width = 50 * font.charWidth;
+  leftRect.height = canvas.height - footerRect.height;
+
+  i32 codeWidth = (screen.width - leftRect.width) / 2;
+  middleRect.x = leftRect.width;
+  if (IS_RIGHT_BUFFER_VISIBLE) {
+    middleRect.width = canvas.width / 3;
+    rightRect.width = canvas.width - (leftRect.width + middleRect.width);
+  } else {
+    middleRect.width = canvas.width - leftRect.width;
+  }
+
+  middleRect.height = canvas.height - footerRect.height;
+
+  rightRect.x = middleRect.x + middleRect.width;
+  rightRect.height = canvas.height - footerRect.height;
+}
+
+void ResetAppFonts() {
+  InitFont(&font, fontName, fontSize, &fontArena);
+  OnLayout();
 }
 
 i32 GetPageHeight(Buffer* buffer) {
@@ -528,7 +558,17 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
         SelectFile(Right);
       if (wParam == 'S' && IsKeyPressed(VK_CONTROL))
         SaveSelectedFile();
-      else if (wParam == VK_F11) {
+      if (wParam == VK_OEM_PLUS && IsKeyPressed(VK_CONTROL)) {
+        fontSize += 1;
+        fontArena.bytesAllocated = 0;
+        ResetAppFonts();
+      }
+      if (wParam == VK_OEM_MINUS && IsKeyPressed(VK_CONTROL)) {
+        fontSize -= 1;
+        fontArena.bytesAllocated = 0;
+        ResetAppFonts();
+      }
+      if (wParam == VK_F11) {
         isFullscreen = !isFullscreen;
         SetFullscreen(window, isFullscreen);
       } else if (IsKeyPressed(VK_CONTROL) && wParam == 'D') {
@@ -568,27 +608,7 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     canvas.pixels = VirtualAllocateMemory(canvas.width * canvas.height * 4);
     dc = GetDC(window);
 
-    int footerHeight = font.charHeight + footerPadding * 2;
-    footerRect.width = screen.width;
-    footerRect.height = footerHeight;
-    footerRect.y = screen.height - footerRect.height;
-
-    leftRect.width = 50 * font.charWidth;
-    leftRect.height = canvas.height - footerRect.height;
-
-    i32 codeWidth = (screen.width - leftRect.width) / 2;
-    middleRect.x = leftRect.width;
-    if (IS_RIGHT_BUFFER_VISIBLE) {
-      middleRect.width = canvas.width / 3;
-      rightRect.width = canvas.width - (leftRect.width + middleRect.width);
-    } else {
-      middleRect.width = canvas.width - leftRect.width;
-    }
-
-    middleRect.height = canvas.height - footerRect.height;
-
-    rightRect.x = middleRect.x + middleRect.width;
-    rightRect.height = canvas.height - footerRect.height;
+    OnLayout();
   }
   return DefWindowProc(window, message, wParam, lParam);
 }
@@ -722,7 +742,7 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset, EdFile file) {
   if (!buffer->isSaved)
     PaintRect(rect.x + rect.width - 30 - scrollbarWidth, rect.y, 20, 10, 0x882222);
 
-  int hasCursor =file == selectedFile && mode != FileSelection ;
+  int hasCursor = file == selectedFile && mode != FileSelection;
   if (hasCursor) {
     // cursor line background
     PaintRect(rect.x, cursorY, rect.width, lineHeightPx, lineColor);
@@ -735,7 +755,7 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset, EdFile file) {
     PaintRect(cursorX, cursorY, font.charWidth, lineHeightPx, cursorColor);
   }
 
-    i32 charShift = (lineHeightPx - font.charHeight) / 2;
+  i32 charShift = (lineHeightPx - font.charHeight) / 2;
   for (i32 i = 0; i < buffer->size; i++) {
     i32 charY = y + charShift;
     char ch = buffer->content[i];
@@ -809,7 +829,7 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
 
   PreventWindowsDPIScaling();
 
-  Arena fontArena = CreateArena(500 * 1024);
+  fontArena = CreateArena(500 * 1024);
   InitFont(&font, fontName, fontSize, &fontArena);
 
   mainWindow = OpenWindow(OnEvent, colorsBg, "Editor");
@@ -827,7 +847,6 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
   SelectFile(Middle);
 
   InitAnimations();
-  lineHeightPx = RoundI32((f32)font.charHeight * lineHeight);
   i64 startCounter = GetPerfCounter();
   while (isRunning) {
     MSG msg;
