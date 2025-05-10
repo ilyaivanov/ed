@@ -60,10 +60,10 @@ HWND OpenWindow(WNDPROC OnEvent, u32 bgColor, char* title) {
 
   HDC dc = GetDC(0);
   int screenWidth = GetDeviceCaps(dc, HORZRES);
-  // int screenHeight = GetDeviceCaps(dc, VERTRES);
+   int screenHeight = GetDeviceCaps(dc, VERTRES);
 
   int windowWidth = 1800;
-  int windowHeight = 1200;
+  int windowHeight = screenHeight;
 
   HWND window = CreateWindowA(windowClass.lpszClassName, title, WS_OVERLAPPEDWINDOW | WS_VISIBLE,
                               screenWidth - windowWidth + 11, 0, windowWidth, windowHeight, 0, 0,

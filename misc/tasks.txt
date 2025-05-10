@@ -14,6 +14,10 @@ OverallProgress
 
 Timeline
 Week 2
+10.05 Saturday
+  - Change fontSize at runtime
+  - Ugly version of the search local file
+
 09.05 Friday
   - Minimal file explorer
 
@@ -64,6 +68,5 @@ Things I use
   - o O 
 
 Backlog
-  - switch between files
   - search
   - undo/redo

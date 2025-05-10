@@ -1,6 +1,7 @@
 #include "anim.c"
 #include "font.c"
 #include "math.c"
+#include "search.c"
 #include "vim.c"
 #include "win32.c"
 #include <math.h>
@@ -25,6 +26,7 @@ u32 colorsCursorLineNormal = 0x3F370E;
 u32 colorsCursorLineInsert = 0x3D2425;
 u32 colorsCursorLineVisual = 0x202020;
 
+u32 colorsSearchResult = 0x226622;
 u32 colorsSelection = 0x253340;
 u32 colorsScrollbar = 0x888888;
 
@@ -54,7 +56,7 @@ char* middleFilePath = "..\\main.c";
 Buffer rightBuffer;
 char* rightFilePath = "..\\vim.c";
 
-char* allFiles[] = {"main.c", "font.c",  "anim.c",          "math.c",
+char* allFiles[] = {"main.c", "font.c",  "anim.c",          "math.c",          "search.c",
                     "vim.c",  "win32.c", "misc\\tasks.txt", "misc\\build2.bat"};
 
 typedef enum EdFile { Left, Middle, Right } EdFile;
@@ -85,7 +87,7 @@ void SelectFile(EdFile file) {
   }
 }
 
-typedef enum Mode { Normal, Insert, Visual, VisualLine, FileSelection } Mode;
+typedef enum Mode { Normal, Insert, Visual, VisualLine, FileSelection, LocalSearchTyping } Mode;
 f32 appTimeMs = 0;
 Mode mode = Normal;
 
@@ -100,7 +102,7 @@ Arena fontArena;
 
 i32 lineHeightPx;
 f32 lineHeight = 1.1;
-i32 fontSize = 15;
+i32 fontSize = 14;
 char* fontName = "Consolas";
 
 typedef struct CursorPos {
@@ -133,6 +135,58 @@ CursorPos GetPositionOffset(Buffer* buffer, i32 pos) {
   }
   return res;
 }
+CursorPos GetCursorPosition(Buffer* buffer) {
+  return GetPositionOffset(buffer, buffer->cursor);
+}
+
+i32 GetPageHeight(Buffer* buffer) {
+  int rows = 1;
+  for (i32 i = 0; i < buffer->size; i++) {
+    if (buffer->content[i] == '\n')
+      rows++;
+  }
+  return rows * lineHeightPx;
+}
+void SetCursorPosition(i32 v) {
+  selectedBuffer->cursor = Clampi32(v, 0, selectedBuffer->size - 1);
+  CursorPos cursor = GetCursorPosition(selectedBuffer);
+
+  float lineToLookAhead = 5.0f * lineHeightPx;
+  float cursorPos = cursor.line * lineHeightPx;
+  float maxScroll = GetPageHeight(selectedBuffer) - selectedRect->height;
+  if ((selectedOffset->target + selectedRect->height - lineToLookAhead) < cursorPos)
+    selectedOffset->target = Clamp(cursorPos - (float)selectedRect->height / 2.0f, 0, maxScroll);
+  else if ((selectedOffset->target + lineToLookAhead) > cursorPos)
+    selectedOffset->target = Clamp(cursorPos - (float)selectedRect->height / 2.0f, 0, maxScroll);
+}
+
+void MoveNextOnSearch() {
+  if (entriesCount > 0) {
+    if (selectedBuffer->cursor < entriesAt[0].at) {
+      SetCursorPosition(entriesAt[0].at);
+      currentEntry = 0;
+    } else {
+      for (int i = 1; i < entriesCount; i++) {
+        if (entriesAt[i - 1].at <= selectedBuffer->cursor &&
+            entriesAt[i].at > selectedBuffer->cursor) {
+          currentEntry = i;
+          SetCursorPosition(entriesAt[i].at);
+          return;
+        }
+      }
+      SetCursorPosition(entriesAt[0].at);
+      currentEntry = 0;
+    }
+  }
+}
+
+void StartSearch() {
+  isSearchVisible = 1;
+  FindEntries(selectedBuffer);
+
+  MoveNextOnSearch();
+}
+
 typedef struct SelectionRange {
   i32 left;
   i32 right;
@@ -149,10 +203,6 @@ SelectionRange GetSelectionRange() {
   res.left = selectionLeft;
   res.right = selectionRight;
   return res;
-}
-
-CursorPos GetCursorPosition(Buffer* buffer) {
-  return GetPositionOffset(buffer, buffer->cursor);
 }
 
 void OnLayout() {
@@ -185,34 +235,12 @@ void ResetAppFonts() {
   OnLayout();
 }
 
-i32 GetPageHeight(Buffer* buffer) {
-  int rows = 1;
-  for (i32 i = 0; i < buffer->size; i++) {
-    if (buffer->content[i] == '\n')
-      rows++;
-  }
-  return rows * lineHeightPx;
-}
-
 void CenterViewOnCursor() {
 
   CursorPos cursor = GetCursorPosition(selectedBuffer);
   float cursorPos = cursor.line * lineHeightPx;
 
   selectedOffset->target = cursorPos - (float)selectedRect->height / 2.0f;
-}
-
-void SetCursorPosition(i32 v) {
-  selectedBuffer->cursor = Clampi32(v, 0, selectedBuffer->size - 1);
-  CursorPos cursor = GetCursorPosition(selectedBuffer);
-
-  float lineToLookAhead = 5.0f * lineHeightPx;
-  float cursorPos = cursor.line * lineHeightPx;
-  float maxScroll = GetPageHeight(selectedBuffer) - selectedRect->height;
-  if ((selectedOffset->target + selectedRect->height - lineToLookAhead) < cursorPos)
-    selectedOffset->target = Clamp(cursorPos - (float)selectedRect->height / 2.0f, 0, maxScroll);
-  else if ((selectedOffset->target + lineToLookAhead) > cursorPos)
-    selectedOffset->target = Clamp(cursorPos - (float)selectedRect->height / 2.0f, 0, maxScroll);
 }
 
 void MoveDown() {
@@ -316,7 +344,9 @@ void AppendCharIntoCommand(char ch) {
   currentCommand[currentCommandLen++] = ch;
   visibleCommandLen = 0;
   hasMatchedAnyCommand = 0;
-  if (mode == FileSelection) {
+  if (mode == LocalSearchTyping) {
+
+  } else if (mode == FileSelection) {
     char firstChar = currentCommand[0];
     if (firstChar >= '1' && firstChar <= '9') {
       SaveSelectedFile();
@@ -500,6 +530,28 @@ void AppendCharIntoCommand(char ch) {
       if (IsCommand("_f"))
         FormatSelectedFile();
 
+      if (IsCommand("_n")) {
+        isSearchVisible = 0;
+      }
+      if (IsCommand("n")) {
+        if (!isSearchVisible) {
+          isSearchVisible = 1;
+          StartSearch();
+        } else {
+          MoveNextOnSearch();
+        }
+      }
+
+      if (IsCommand("N")) {
+        currentEntry--;
+        if (currentEntry < 0)
+          currentEntry = entriesCount - 1;
+        SetCursorPosition(entriesAt[currentEntry].at);
+      }
+      if (IsCommand("/")) {
+        mode = LocalSearchTyping;
+      }
+
       if (IsCommand("tt")) {
         PostQuitMessage(0);
         isRunning = 0;
@@ -525,13 +577,25 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
         if (ch < MAX_CHAR_CODE && ch >= ' ')
           InsertCharAtCursor(selectedBuffer, ch);
         selectedBuffer->isSaved = 0;
+      } else if (mode == LocalSearchTyping) {
+        searchTerm[searchLen++] = wParam;
+        StartSearch();
       } else
         AppendCharIntoCommand(ch);
     }
     break;
   case WM_SYSKEYDOWN:
   case WM_KEYDOWN:
-    if (mode == FileSelection) {
+    if (mode == LocalSearchTyping) {
+      if (wParam == VK_ESCAPE)
+        mode = Normal;
+      if (wParam == VK_RETURN)
+        mode = Normal;
+      else if (wParam == VK_BACK) {
+        searchTerm[--searchLen] = '\0';
+        FindEntries(selectedBuffer);
+      }
+    } else if (mode == FileSelection) {
       if (wParam == VK_ESCAPE)
         mode = Normal;
     } else if (mode == Insert) {
@@ -727,17 +791,17 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset, EdFile file) {
   i32 x = startX;
   i32 y = rect.y + startY;
 
-  u32 cursorColor = mode == Normal                           ? colorsCursorNormal
-                    : (mode == Visual || mode == VisualLine) ? colorsCursorVisual
-                                                             : colorsCursorInsert;
+  u32 cursorColor = (mode == Normal || mode == LocalSearchTyping) ? colorsCursorNormal
+                    : (mode == Visual || mode == VisualLine)      ? colorsCursorVisual
+                                                                  : colorsCursorInsert;
 
   CursorPos cursor = GetCursorPosition(buffer);
   i32 cursorX = x + font.charWidth * cursor.lineOffset;
   i32 cursorY = y + lineHeightPx * cursor.line;
 
-  u32 lineColor = mode == Normal                           ? colorsCursorLineNormal
-                  : (mode == Visual || mode == VisualLine) ? colorsCursorLineVisual
-                                                           : colorsCursorLineInsert;
+  u32 lineColor = (mode == Normal || mode == LocalSearchTyping) ? colorsCursorLineNormal
+                  : (mode == Visual || mode == VisualLine)      ? colorsCursorLineVisual
+                                                                : colorsCursorLineInsert;
 
   if (!buffer->isSaved)
     PaintRect(rect.x + rect.width - 30 - scrollbarWidth, rect.y, 20, 10, 0x882222);
@@ -746,7 +810,58 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset, EdFile file) {
   if (hasCursor) {
     // cursor line background
     PaintRect(rect.x, cursorY, rect.width, lineHeightPx, lineColor);
+  }
 
+  i32 charShift = (lineHeightPx - font.charHeight) / 2;
+
+  if (selectedBuffer == buffer && isSearchVisible) {
+    i32 currentSearchEntryIndex = 0;
+    EntryFound* found = NULL;
+    i32 charY = rect.y + startY;
+
+    for (i32 i = 0; i < buffer->size; i++) {
+      if (currentSearchEntryIndex < entriesCount)
+        found = &entriesAt[currentSearchEntryIndex];
+      else
+        found = NULL;
+
+      if (found && i >= found->at && i < found->at + found->len) {
+        PaintRect(x, charY, font.charWidth, lineHeightPx, colorsSearchResult);
+      }
+
+      char ch = buffer->content[i];
+      if (ch == '\n') {
+        x = startX;
+        charY += lineHeightPx;
+      } else {
+        x += font.charWidth;
+      }
+
+      if (found && i >= found->at + found->len) {
+        currentSearchEntryIndex++;
+      }
+    }
+
+    int searchX = rect.x + rect.width - 400;
+    int searchY = rect.y + 13;
+    for (i32 i = 0; i < searchLen; i++) {
+
+      CopyMonochromeTextureRectTo(&canvas, &rect, &font.textures[searchTerm[i]], searchX, searchY,
+                                  0xaaaaaa);
+      searchX += font.charWidth;
+    }
+    char s[512] = {0};
+    sprintf(s, "%d of %d", currentEntry, entriesCount);
+    char* a = s;
+    searchX += font.charWidth * 4;
+    while (*a) {
+      CopyMonochromeTextureRectTo(&canvas, &rect, &font.textures[*a], searchX, searchY, 0xaaaaaa);
+      searchX += font.charWidth;
+      a++;
+    }
+  }
+
+  if (hasCursor) {
     // selection
     if (selectedFile == file)
       DrawSelection(buffer, rect, offset);
@@ -755,7 +870,9 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset, EdFile file) {
     PaintRect(cursorX, cursorY, font.charWidth, lineHeightPx, cursorColor);
   }
 
-  i32 charShift = (lineHeightPx - font.charHeight) / 2;
+  x = startX;
+  y = rect.y + startY;
+
   for (i32 i = 0; i < buffer->size; i++) {
     i32 charY = y + charShift;
     char ch = buffer->content[i];
@@ -847,6 +964,7 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
   SelectFile(Middle);
 
   InitAnimations();
+
   i64 startCounter = GetPerfCounter();
   while (isRunning) {
     MSG msg;
