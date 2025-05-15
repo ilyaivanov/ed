@@ -533,8 +533,9 @@ void AppendCharIntoCommand(char ch) {
         FormatSelectedFile();
 
       if (IsCommand("u")) {
-        Change* appliedChange = UndoChange(selectedBuffer, &selectedBuffer->changeArena);
-        if (appliedChange)
+        i32 currentCursor = selectedBuffer->cursor;
+        Change* appliedChange = UndoLastChange(selectedBuffer);
+        if (appliedChange && appliedChange->type != Replaced)
           SetCursorPosition(appliedChange->at);
       }
 
@@ -584,7 +585,6 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
       if (mode == Insert) {
         if (ch < MAX_CHAR_CODE && ch >= ' ')
           InsertCharAtCursor(selectedBuffer, ch);
-        selectedBuffer->isSaved = 0;
       } else if (mode == LocalSearchTyping) {
         searchTerm[searchLen++] = wParam;
         StartSearch();
@@ -623,8 +623,8 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
       if (wParam == VK_ESCAPE)
         ClearCommand();
       if (wParam == 'R' && IsKeyPressed(VK_CONTROL)) {
-        Change* appliedChange = RedoChange(selectedBuffer, &selectedBuffer->changeArena);
-        if (appliedChange)
+        Change* appliedChange = RedoLastChange(selectedBuffer);
+        if (appliedChange && appliedChange->type != Replaced)
           SetCursorPosition(appliedChange->at);
       }
       if (wParam == '1' && IsKeyPressed(VK_MENU))
