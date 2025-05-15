@@ -51,7 +51,7 @@ Buffer leftBuffer;
 char* leftFilePath = "..\\misc\\tasks.txt";
 
 Buffer middleBuffer;
-char* middleFilePath = "..\\main.c";
+char* middleFilePath = "..\\play.c";
 
 Buffer rightBuffer;
 char* rightFilePath = "..\\vim.c";
@@ -296,8 +296,10 @@ void FormatSelectedFile() {
   // I don;t want to parse entire JSON yet
   int newCursor = atoi(output + 12);
 
-  memmove(selectedBuffer->content, nextTextStart, strlen(nextTextStart));
-  selectedBuffer->size = strlen(nextTextStart);
+  ReplaceBufferContent(selectedBuffer, nextTextStart);
+  //memmove(selectedBuffer->content, nextTextStart, strlen(nextTextStart));
+  //selectedBuffer->size = strlen(nextTextStart);
+  //
   selectedBuffer->cursor = newCursor;
   VirtualFreeMemory(output);
 }
@@ -530,6 +532,12 @@ void AppendCharIntoCommand(char ch) {
       if (IsCommand("_f"))
         FormatSelectedFile();
 
+      if (IsCommand("u")) {
+        Change* appliedChange = UndoChange(selectedBuffer, &selectedBuffer->changeArena);
+        if (appliedChange)
+          SetCursorPosition(appliedChange->at);
+      }
+
       if (IsCommand("_n")) {
         isSearchVisible = 0;
       }
@@ -614,6 +622,11 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
         RemoveCurrentChar();
       if (wParam == VK_ESCAPE)
         ClearCommand();
+      if (wParam == 'R' && IsKeyPressed(VK_CONTROL)) {
+        Change* appliedChange = RedoChange(selectedBuffer, &selectedBuffer->changeArena);
+        if (appliedChange)
+          SetCursorPosition(appliedChange->at);
+      }
       if (wParam == '1' && IsKeyPressed(VK_MENU))
         SelectFile(Left);
       if (wParam == '2' && IsKeyPressed(VK_MENU))
@@ -728,12 +741,28 @@ void DrawFooter() {
     CopyMonochromeTextureRectTo(&canvas, &footerRect, &font.textures['*'], x, y, 0xffffff);
 
   int charsToShow = currentCommandLen > 0 ? currentCommandLen : visibleCommandLen;
-  int commandX = footerRect.width / 2;
+  int commandX = (strlen(selectedBuffer->filePath) + 2) * font.charWidth;
   for (int i = 0; i < charsToShow; i++) {
     u32 color = currentCommandLen > 0 ? 0xffffff : 0xbbbbbb;
     CopyMonochromeTextureRectTo(&canvas, &footerRect, &font.textures[currentCommand[i]], commandX,
                                 y, color);
     commandX += font.charWidth;
+  }
+  char posLabel[512];
+
+  CursorPos cursor = GetCursorPosition(selectedBuffer);
+  int chars = sprintf(
+      posLabel,
+      "changes size %d, capacity %d   buffer size %d, capacity %d   pos %d, line %d, offset %d",
+      GetChangeArenaSize(&selectedBuffer->changeArena), selectedBuffer->changeArena.capacity, selectedBuffer->size,
+      selectedBuffer->capacity, selectedBuffer->cursor, cursor.line, cursor.lineOffset);
+  int width = chars * font.charWidth;
+  int posX = screen.width - width - 2 * font.charWidth;
+  int posY = footerRect.y + footerPadding;
+  for (int i = 0; i < chars; i++) {
+    CopyMonochromeTextureRectTo(&canvas, &footerRect, &font.textures[posLabel[i]], posX, posY,
+                                0x888888);
+    posX += font.charWidth;
   }
 }
 
@@ -851,7 +880,8 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset, EdFile file) {
       searchX += font.charWidth;
     }
     char s[512] = {0};
-    sprintf(s, "%d of %d", currentEntry, entriesCount);
+    int visibleCurrent = entriesCount > 0 ? currentEntry + 1 : 0;
+    sprintf(s, "%d of %d", visibleCurrent, entriesCount);
     char* a = s;
     searchX += font.charWidth * 4;
     while (*a) {
@@ -939,6 +969,10 @@ inline i64 EllapsedMs(i64 start) {
   return (i64)((f32)(GetPerfCounter() - start) * 1000.0f / (f32)GetPerfFrequency());
 }
 
+void InitChangeArena(Buffer* buffer) {
+  buffer->changeArena.contents = VirtualAllocateMemory(KB(40));
+  buffer->changeArena.capacity = KB(40);
+}
 int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd) {
   (void)hPrevInstance;
   (void)lpCmdLine;
@@ -956,8 +990,9 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
 
   dc = GetDC(mainWindow);
   leftBuffer = ReadFileIntoDoubledSizedBuffer(leftFilePath);
-
+  InitChangeArena(&leftBuffer);
   middleBuffer = ReadFileIntoDoubledSizedBuffer(middleFilePath);
+  InitChangeArena(&middleBuffer);
   //
   rightBuffer = ReadFileIntoDoubledSizedBuffer(rightFilePath);
 
@@ -965,6 +1000,7 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
 
   InitAnimations();
 
+  //InitChanges(selectedBuffer, &changeArena);
   i64 startCounter = GetPerfCounter();
   while (isRunning) {
     MSG msg;

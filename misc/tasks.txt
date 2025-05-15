@@ -13,6 +13,11 @@ OverallProgress
 
 
 Timeline
+Week 3
+Wednesday
+  - Cursor position on the footer
+  - Working on undo\redo
+
 Week 2
 10.05 Saturday
   - Change fontSize at runtime

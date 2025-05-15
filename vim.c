@@ -1,5 +1,21 @@
 #pragma once
 
+typedef enum ChangeType { Added, Removed } ChangeType;
+
+typedef struct Change {
+  ChangeType type;
+  int groupId;
+  int at;
+  int size;
+  char text[];
+} Change;
+
+typedef struct ChangeArena {
+  Change* contents;
+  int capacity;
+  int changesCount;
+} ChangeArena;
+
 typedef struct Buffer {
   char* content;
   i32 size;
@@ -10,7 +26,22 @@ typedef struct Buffer {
 
   i32 isSaved;
   char filePath[512];
+  int currentChangeGroup;
+  ChangeArena changeArena;
 } Buffer;
+
+#define ChangeSize(c) (sizeof(Change) + c->size)
+#define NextChange(c) ((Change*)(((u8*)c) + ChangeSize(c)))
+
+int GetChangeArenaSize(ChangeArena* arena) {
+  Change* c = arena->contents;
+  int res = 0;
+  for (int i = 0; i < arena->changesCount; i++) {
+    res += ChangeSize(c);
+    c = NextChange(c);
+  }
+  return res;
+}
 
 i32 FindLineStart(Buffer* buffer, i32 pos) {
   while (pos > 0 && buffer->content[pos - 1] != '\n')
@@ -28,7 +59,17 @@ i32 FindLineEnd(Buffer* buffer, i32 pos) {
   return pos;
 }
 
-void RemoveChars(Buffer* string, int from, int to) {
+void DoubleCapacityIfFull(Buffer* buffer) {
+  char* currentStr = buffer->content;
+  buffer->capacity = (buffer->capacity == 0) ? 4 : (buffer->capacity * 2);
+  buffer->content = VirtualAllocateMemory(buffer->capacity);
+  if (currentStr) {
+    memmove(buffer->content, currentStr, buffer->size);
+    VirtualFreeMemory(currentStr);
+  }
+}
+
+void BufferRemoveChars(Buffer* string, int from, int to) {
   char* content = string->content;
   int num_to_shift = string->size - (to + 1);
 
@@ -36,19 +77,155 @@ void RemoveChars(Buffer* string, int from, int to) {
 
   string->size -= (to - from + 1);
 }
+void BufferInsertCharAt(Buffer* buffer, i32 pos, char ch) {
+  while (buffer->size + 1 >= buffer->capacity)
+    DoubleCapacityIfFull(buffer);
+
+  i32 textSize = buffer->size;
+  char* text = buffer->content;
+
+  memmove(text + pos + 1, text + pos, textSize - pos);
+
+  text[pos] = ch;
+
+  buffer->size++;
+}
+
+void BufferInsertChars(Buffer* buffer, char* chars, i32 len, i32 at) {
+  while (buffer->size + len >= buffer->capacity)
+    DoubleCapacityIfFull(buffer);
+
+  buffer->size += len;
+
+  char* from = buffer->content + at;
+  char* to = buffer->content + at + len;
+  memmove(to, from, buffer->size - at);
+
+  for (i32 i = at; i < at + len; i++) {
+    buffer->content[i] = chars[i - at];
+  }
+}
+
+void InitChanges(Buffer* buffer, ChangeArena* arena) {
+  Change* c = arena->contents;
+  c->type = Added;
+  c->groupId = 1;
+  c->at = 4;
+  c->size = 4;
+  memmove(c->text, "bar\n", 4);
+
+  c = NextChange(c);
+
+  c->type = Added;
+  c->groupId = 2;
+  c->at = 4;
+  c->size = 4;
+  memmove(c->text, "ARM\n", 4);
+
+  c = NextChange(c);
+
+  c->type = Added;
+  c->groupId = 3;
+  c->at = 17;
+  c->size = 6;
+  memmove(c->text, "foo42\n", 6);
+
+  c = NextChange(c);
+
+  c->type = Removed;
+  c->groupId = 3;
+  c->at = 23;
+  c->size = 3;
+  memmove(c->text, "end", 3);
+
+  arena->changesCount = 4;
+  buffer->currentChangeGroup = 2;
+}
+
+Change* AddNewChange(Buffer* buffer) {
+  Change* c = buffer->changeArena.contents;
+
+  int targetGroup = buffer->currentChangeGroup;
+
+  int changeCount = 0;
+  while (changeCount < buffer->changeArena.changesCount &&    c->groupId <= targetGroup) {
+    c = NextChange(c);
+    changeCount++;
+  }
+
+  // TODO: here to decide if go next
+  if (c->groupId == targetGroup && buffer->changeArena.changesCount != 0)
+    c = NextChange(c);
+
+  buffer->changeArena.changesCount = changeCount + 1;
+  return c;
+}
+
+i32 shouldIncrementChangeGroups = 1;
+void RemoveChars(Buffer* buffer, int from, int to) {
+  if (shouldIncrementChangeGroups)
+    buffer->currentChangeGroup++;
+
+  Change* c = AddNewChange(buffer);
+
+  int groupId = buffer->currentChangeGroup;
+
+  c->type = Removed;
+  c->groupId = groupId;
+  c->at = from;
+  c->size = to - from + 1;
+  memmove(c->text, buffer->content + from, c->size);
+
+  BufferRemoveChars(buffer, from, to);
+}
 
 void RemoveChar(Buffer* buffer, i32 at) {
   RemoveChars(buffer, at, at);
 }
 
-void DoubleCapacityIfFull(Buffer* buffer) {
-  char* currentStr = buffer->content;
-  buffer->capacity = (buffer->capacity == 0) ? 4 : (buffer->capacity * 2);
-  buffer->content = VirtualAllocateMemory(buffer->capacity);
-  if (currentStr) {
-    memmove(currentStr, buffer->content, buffer->size);
-    VirtualFreeMemory(currentStr);
-  }
+void InsertChars(Buffer* buffer, char* chars, i32 len, i32 at) {
+  if (shouldIncrementChangeGroups)
+    buffer->currentChangeGroup++;
+
+  Change* c = AddNewChange(buffer);
+
+  int groupId = buffer->currentChangeGroup;
+
+  c->type = Added;
+  c->groupId = groupId;
+  c->at = at;
+  c->size = len;
+  memmove(c->text, chars, c->size);
+
+  BufferInsertChars(buffer, chars, len, at);
+}
+
+void InsertCharAt(Buffer* buffer, i32 pos, char ch) {
+  if (shouldIncrementChangeGroups)
+    buffer->currentChangeGroup++;
+
+  Change* c = AddNewChange(buffer);
+
+  int groupId = buffer->currentChangeGroup;
+
+  c->type = Added;
+  c->groupId = groupId;
+  c->at = pos;
+  c->size = 1;
+  c->text[0] = ch;
+
+  BufferInsertCharAt(buffer, pos, ch);
+}
+
+// TODO: this is questionable, but should work for now. Usecase: formatting document
+void ReplaceBufferContent(Buffer* buffer, char* newContent) {
+  RemoveChars(buffer, 0, buffer->size - 1);
+  shouldIncrementChangeGroups = 0;
+  InsertChars(buffer, newContent, strlen(newContent), 0);
+  shouldIncrementChangeGroups = 1;
+  Change* first = buffer->changeArena.contents;
+  Change* second = NextChange(first);
+  int a = 0;
 }
 
 Buffer ReadFileIntoDoubledSizedBuffer(char* path) {
@@ -63,10 +240,7 @@ Buffer ReadFileIntoDoubledSizedBuffer(char* path) {
       res[fileSizeAfter++] = file[i];
   }
   VirtualFreeMemory(file);
-  Buffer resFile = {.capacity = fileSize * 2,
-                    .size = fileSizeAfter,
-                    .content = res,
-                    .isSaved = 1};
+  Buffer resFile = {.capacity = fileSize * 2, .size = fileSizeAfter, .content = res, .isSaved = 1};
 
   strcpy_s(resFile.filePath, 512, path);
 
@@ -162,37 +336,70 @@ i32 JumpWordForward(Buffer* buffer) {
 
   return pos;
 }
-
-void InsertCharAt(Buffer* buffer, i32 pos, char ch) {
-  i32 textSize = buffer->size;
-  char* text = buffer->content;
-
-  memmove(text + pos + 1, text + pos, textSize - pos);
-
-  text[pos] = ch;
-
-  buffer->size++;
-}
-
 void InsertCharAtCursor(Buffer* buffer, char ch) {
   InsertCharAt(buffer, buffer->cursor, ch);
   buffer->cursor++;
 }
 
-void InsertChars(Buffer* buffer, char* chars, i32 len, i32 at) {
-  while (buffer->size + len > buffer->capacity) {
-    DoubleCapacityIfFull(buffer);
+Change* UndoChange(Buffer* buffer, ChangeArena* arena) {
+  Change* first = buffer->changeArena.contents;
+  Change* second = NextChange(first);
+  Change* third = NextChange(second);
+  Change* fourth = NextChange(third);
+
+  Change* c = arena->contents;
+
+  int targetGroup = buffer->currentChangeGroup;
+
+  for (int i = 0; i < arena->changesCount && c->groupId != targetGroup; i++)
+    c = NextChange(c);
+
+  if (buffer->currentChangeGroup != 0 && c->groupId == buffer->currentChangeGroup) {
+    buffer->currentChangeGroup -= 1;
+
+    Change* changesToUndo[512];
+    int changesCountToUndo = 0;
+
+    while (c->groupId == targetGroup) {
+      changesToUndo[changesCountToUndo++] = c;
+      c = NextChange(c);
+    }
+
+    for (int i = changesCountToUndo - 1; i >= 0; i--) {
+      Change* changeToUndo = changesToUndo[i];
+      if (changeToUndo->type == Added)
+        BufferRemoveChars(buffer, changeToUndo->at, changeToUndo->at + changeToUndo->size - 1);
+      else
+        BufferInsertChars(buffer, changeToUndo->text, changeToUndo->size, changeToUndo->at);
+    }
+    return changesToUndo[0];
+  }
+  return 0;
+}
+
+Change* RedoChange(Buffer* buffer, ChangeArena* arena) {
+  Change* c = arena->contents;
+  int targetGroup = buffer->currentChangeGroup + 1;
+  int i = 0;
+  while (i < arena->changesCount && c->groupId != targetGroup) {
+    i++;
+    c = NextChange(c);
   }
 
-  buffer->size += len;
-
-  char* from = buffer->content + at;
-  char* to = buffer->content + at + len;
-  memmove(to, from, buffer->size - at);
-
-  for (i32 i = at; i < at + len; i++) {
-    buffer->content[i] = chars[i - at];
+  if (c->groupId == targetGroup) {
+    buffer->currentChangeGroup += 1;
+    Change* lastChange = c;
+    while (c->groupId == targetGroup) {
+      // lastChange = c;
+      if (c->type == Added)
+        BufferInsertChars(buffer, c->text, c->size, c->at);
+      else
+        BufferRemoveChars(buffer, c->at, c->at + c->size - 1);
+      c = NextChange(c);
+    }
+    return lastChange;
   }
+  return 0;
 }
 
 i32 GetLineOffset(Buffer* buffer, i32 lineStart) {
