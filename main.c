@@ -16,7 +16,7 @@ int isFullscreen = 0;
 
 // u32 colorsBg = 0x0F1419;
 u32 colorsBg = 0x121212;
-u32 colorsFont = 0xE6E6E6;
+u32 colorsFont = 0xCCCCCC;
 u32 colorsFooter = 0x1D1D1D;
 
 u32 colorsCursorNormal = 0xFFDC32;
@@ -48,13 +48,13 @@ i32 footerPadding = 2;
 Rect screen = {0};
 
 Buffer leftBuffer;
-char* leftFilePath = "..\\misc\\tasks.txt";
+char* leftFilePath = ".\\misc\\tasks.txt";
 
 Buffer middleBuffer;
-char* middleFilePath = "..\\play.c";
+char* middleFilePath = ".\\main.c";
 
 Buffer rightBuffer;
-char* rightFilePath = "..\\vim.c";
+char* rightFilePath = ".\\vim.c";
 
 char* allFiles[] = {"main.c", "font.c",  "anim.c",          "math.c",          "search.c",
                     "vim.c",  "win32.c", "misc\\tasks.txt", "misc\\build2.bat"};
@@ -212,7 +212,7 @@ void OnLayout() {
   footerRect.height = footerHeight;
   footerRect.y = screen.height - footerRect.height;
 
-  leftRect.width = 50 * font.charWidth;
+  leftRect.width = 70 * font.charWidth;
   leftRect.height = canvas.height - footerRect.height;
 
   i32 codeWidth = (screen.width - leftRect.width) / 2;
@@ -297,14 +297,15 @@ void FormatSelectedFile() {
   int newCursor = atoi(output + 12);
 
   ReplaceBufferContent(selectedBuffer, nextTextStart);
-  //memmove(selectedBuffer->content, nextTextStart, strlen(nextTextStart));
-  //selectedBuffer->size = strlen(nextTextStart);
+  // memmove(selectedBuffer->content, nextTextStart, strlen(nextTextStart));
+  // selectedBuffer->size = strlen(nextTextStart);
   //
   selectedBuffer->cursor = newCursor;
   VirtualFreeMemory(output);
 }
 void RunCode() {
-  char* cmd = "cmd /c ..\\misc\\build2.bat";
+  /////////////////////////
+  char* cmd = "cmd /c .\\misc\\build.bat";
   char output[KB(10)] = {0};
   int len = 0;
   RunCommand(cmd, output, &len);
@@ -352,7 +353,7 @@ void AppendCharIntoCommand(char ch) {
     char firstChar = currentCommand[0];
     if (firstChar >= '1' && firstChar <= '9') {
       SaveSelectedFile();
-      sprintf(selectedBuffer->filePath, "..\\%s", allFiles[firstChar - '1']);
+      sprintf(selectedBuffer->filePath, ".\\%s", allFiles[firstChar - '1']);
       VirtualFreeMemory(selectedBuffer->content);
       VirtualFreeMemory(selectedBuffer->changeArena.contents);
       *selectedBuffer = ReadFileIntoDoubledSizedBuffer(selectedBuffer->filePath);
@@ -1000,7 +1001,7 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
 
   InitAnimations();
 
-  //InitChanges(selectedBuffer, &changeArena);
+  // InitChanges(selectedBuffer, &changeArena);
   i64 startCounter = GetPerfCounter();
   while (isRunning) {
     MSG msg;
