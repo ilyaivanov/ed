@@ -176,7 +176,7 @@ void RemoveChars(Buffer* buffer, int from, int to) {
   c->newTextSize = 0;
   memmove(c->text, buffer->content + from, c->size);
 
-  BufferRemoveChars(buffer, from, to);
+  ApplyChange(buffer, c);
 }
 
 void RemoveChar(Buffer* buffer, i32 at) {
