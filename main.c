@@ -358,6 +358,7 @@ void AppendCharIntoCommand(char ch) {
       *selectedBuffer = ReadFileIntoDoubledSizedBuffer(selectedBuffer->filePath);
       InitChangeArena(selectedBuffer);
       mode = Normal;
+      selectedOffset->target = selectedOffset->current = 0;
       hasMatchedAnyCommand = 1;
     }
   } else {
