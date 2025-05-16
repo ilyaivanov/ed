@@ -32,6 +32,20 @@ typedef struct Buffer {
   ChangeArena changeArena;
 } Buffer;
 
+void InitChangeArena(Buffer* buffer) {
+  buffer->changeArena.contents = VirtualAllocateMemory(KB(40));
+  buffer->changeArena.capacity = KB(40);
+  buffer->changeArena.lastChangeIndex = -1;
+}
+
+void ChangeArenaDoubleMemory(ChangeArena* arena, int newSize) {
+  Change* newContents = VirtualAllocateMemory(newSize);
+  memmove(newContents, arena->contents, arena->capacity);
+  VirtualFreeMemory(arena->contents);
+  arena->contents = newContents;
+  arena->capacity = newSize;
+}
+
 #define ChangeSize(c) (sizeof(Change) + c->size + c->newTextSize)
 #define NextChange(c) ((Change*)(((u8*)c) + ChangeSize(c)))
 
@@ -117,7 +131,11 @@ Change* GetChangeAt(Buffer* buffer, int at) {
   return c;
 }
 
-Change* AddNewChange(Buffer* buffer) {
+Change* AddNewChange(Buffer* buffer, int changeSize) {
+  int size = GetChangeArenaSize(&buffer->changeArena) + changeSize;
+  if (size >= buffer->changeArena.capacity)
+    ChangeArenaDoubleMemory(&buffer->changeArena, size * 2);
+
   buffer->changeArena.lastChangeIndex += 1;
   buffer->changeArena.changesCount = buffer->changeArena.lastChangeIndex + 1;
 
@@ -149,7 +167,8 @@ void UndoChange(Buffer* buffer, Change* c) {
 }
 
 void RemoveChars(Buffer* buffer, int from, int to) {
-  Change* c = AddNewChange(buffer);
+  int changeSize = sizeof(Change) + (to - from + 1);
+  Change* c = AddNewChange(buffer, changeSize);
 
   c->type = Removed;
   c->at = from;
@@ -165,8 +184,8 @@ void RemoveChar(Buffer* buffer, i32 at) {
 }
 
 void InsertChars(Buffer* buffer, char* chars, i32 len, i32 at) {
-
-  Change* c = AddNewChange(buffer);
+  int changeSize = sizeof(Change) + len;
+  Change* c = AddNewChange(buffer, changeSize);
 
   c->type = Added;
   c->at = at;
@@ -178,8 +197,8 @@ void InsertChars(Buffer* buffer, char* chars, i32 len, i32 at) {
 }
 
 void InsertCharAt(Buffer* buffer, i32 pos, char ch) {
-
-  Change* c = AddNewChange(buffer);
+  int changeSize = sizeof(Change) + 1;
+  Change* c = AddNewChange(buffer, changeSize);
 
   c->type = Added;
   c->at = pos;
@@ -191,13 +210,15 @@ void InsertCharAt(Buffer* buffer, i32 pos, char ch) {
 }
 
 void ReplaceBufferContent(Buffer* buffer, char* newContent) {
+  int newContentLen = strlen(newContent);
+  int changeSize = sizeof(Change) + buffer->size - 1 + newContentLen;
 
-  Change* c = AddNewChange(buffer);
+  Change* c = AddNewChange(buffer, changeSize);
 
   c->type = Replaced;
   c->at = 0;
   c->size = buffer->size - 1;
-  c->newTextSize = strlen(newContent) - 1;
+  c->newTextSize = newContentLen - 1;
   memmove(c->text, buffer->content, c->size);
   memmove(c->text + c->size, newContent, c->newTextSize);
 
