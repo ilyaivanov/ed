@@ -354,7 +354,9 @@ void AppendCharIntoCommand(char ch) {
       SaveSelectedFile();
       sprintf(selectedBuffer->filePath, "..\\%s", allFiles[firstChar - '1']);
       VirtualFreeMemory(selectedBuffer->content);
+      VirtualFreeMemory(selectedBuffer->changeArena.contents);
       *selectedBuffer = ReadFileIntoDoubledSizedBuffer(selectedBuffer->filePath);
+      InitChangeArena(selectedBuffer);
       mode = Normal;
       hasMatchedAnyCommand = 1;
     }
@@ -754,8 +756,9 @@ void DrawFooter() {
   int chars = sprintf(
       posLabel,
       "changes size %d, capacity %d   buffer size %d, capacity %d   pos %d, line %d, offset %d",
-      GetChangeArenaSize(&selectedBuffer->changeArena), selectedBuffer->changeArena.capacity, selectedBuffer->size,
-      selectedBuffer->capacity, selectedBuffer->cursor, cursor.line, cursor.lineOffset);
+      GetChangeArenaSize(&selectedBuffer->changeArena), selectedBuffer->changeArena.capacity,
+      selectedBuffer->size, selectedBuffer->capacity, selectedBuffer->cursor, cursor.line,
+      cursor.lineOffset);
   int width = chars * font.charWidth;
   int posX = screen.width - width - 2 * font.charWidth;
   int posY = footerRect.y + footerPadding;
@@ -969,10 +972,6 @@ inline i64 EllapsedMs(i64 start) {
   return (i64)((f32)(GetPerfCounter() - start) * 1000.0f / (f32)GetPerfFrequency());
 }
 
-void InitChangeArena(Buffer* buffer) {
-  buffer->changeArena.contents = VirtualAllocateMemory(KB(40));
-  buffer->changeArena.capacity = KB(40);
-}
 int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd) {
   (void)hPrevInstance;
   (void)lpCmdLine;
