@@ -22,9 +22,12 @@ u32 colorsFooter = 0x1D1D1D;
 u32 colorsCursorNormal = 0xFFDC32;
 u32 colorsCursorInsert = 0xFC2837;
 u32 colorsCursorVisual = 0x3E9FBE;
+u32 colorsCursorLocalSearchType = 0x3e9f9f;
+
 u32 colorsCursorLineNormal = 0x3F370E;
 u32 colorsCursorLineInsert = 0x3D2425;
 u32 colorsCursorLineVisual = 0x202020;
+u32 colorsCursorLineLocalSearchType = 0x203030;
 
 u32 colorsSearchResult = 0x226622;
 u32 colorsSelection = 0x253340;
@@ -884,17 +887,19 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset, EdFile file) {
   i32 x = startX;
   i32 y = rect.y + startY;
 
-  u32 cursorColor = (mode == Normal || mode == LocalSearchTyping) ? colorsCursorNormal
-                    : (mode == Visual || mode == VisualLine)      ? colorsCursorVisual
-                                                                  : colorsCursorInsert;
+  u32 cursorColor = (mode == Normal)                         ? colorsCursorNormal
+                    : mode == LocalSearchTyping              ? colorsCursorLocalSearchType
+                    : (mode == Visual || mode == VisualLine) ? colorsCursorVisual
+                                                             : colorsCursorInsert;
 
   CursorPos cursor = GetCursorPosition(buffer);
   i32 cursorX = x + font.charWidth * cursor.lineOffset;
   i32 cursorY = y + lineHeightPx * cursor.line;
 
-  u32 lineColor = (mode == Normal || mode == LocalSearchTyping) ? colorsCursorLineNormal
-                  : (mode == Visual || mode == VisualLine)      ? colorsCursorLineVisual
-                                                                : colorsCursorLineInsert;
+  u32 lineColor = (mode == Normal)                         ? colorsCursorLineNormal
+                  : mode == LocalSearchTyping              ? colorsCursorLineLocalSearchType
+                  : (mode == Visual || mode == VisualLine) ? colorsCursorLineVisual
+                                                           : colorsCursorLineInsert;
 
   if (!buffer->isSaved)
     PaintRect(rect.x + rect.width - 30 - scrollbarWidth, rect.y, 20, 10, 0x882222);
