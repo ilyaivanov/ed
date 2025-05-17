@@ -938,9 +938,9 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset, EdFile file) {
     int searchX = rect.x + rect.width - 400;
     int searchY = rect.y + 13;
     for (i32 i = 0; i < searchLen; i++) {
-
+      u32 searchColor = mode == LocalSearchTyping ? 0x66ffff : 0xaaaaaa;
       CopyMonochromeTextureRectTo(&canvas, &rect, &font.textures[searchTerm[i]], searchX, searchY,
-                                  0xaaaaaa);
+                                  searchColor);
       searchX += font.charWidth;
     }
     char s[512] = {0};
