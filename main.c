@@ -160,31 +160,66 @@ void SetCursorPosition(i32 v) {
     selectedOffset->target = Clamp(cursorPos - (float)selectedRect->height / 2.0f, 0, maxScroll);
 }
 
-void MoveNextOnSearch() {
+void FocusOnEntry(int index) {
+  SetCursorPosition(entriesAt[index].at);
+  currentEntry = index;
+}
+
+void FindClosestMatch() {
   if (entriesCount > 0) {
-    if (selectedBuffer->cursor < entriesAt[0].at) {
-      SetCursorPosition(entriesAt[0].at);
-      currentEntry = 0;
-    } else {
+    if (selectedBuffer->cursor < entriesAt[0].at)
+      FocusOnEntry(0);
+    else {
       for (int i = 1; i < entriesCount; i++) {
-        if (entriesAt[i - 1].at <= selectedBuffer->cursor &&
-            entriesAt[i].at > selectedBuffer->cursor) {
-          currentEntry = i;
-          SetCursorPosition(entriesAt[i].at);
+        if (entriesAt[i - 1].at < selectedBuffer->cursor &&
+            entriesAt[i].at >= selectedBuffer->cursor) {
+          FocusOnEntry(i);
           return;
         }
       }
-      SetCursorPosition(entriesAt[0].at);
-      currentEntry = 0;
+      FocusOnEntry(0);
     }
   }
 }
 
+void MoveNextOnSearch() {
+  if (entriesCount > 0) {
+    if (selectedBuffer->cursor < entriesAt[0].at)
+      FocusOnEntry(0);
+    else {
+      for (int i = 1; i < entriesCount; i++) {
+        if (entriesAt[i - 1].at <= selectedBuffer->cursor &&
+            entriesAt[i].at > selectedBuffer->cursor) {
+          FocusOnEntry(i);
+          return;
+        }
+      }
+      FocusOnEntry(0);
+    }
+  }
+}
+
+void MovePrevOnSearch() {
+  if (entriesCount > 0) {
+    if (selectedBuffer->cursor < entriesAt[0].at)
+      FocusOnEntry(entriesCount - 1);
+    else {
+      for (int i = 1; i < entriesCount; i++) {
+        if (entriesAt[i - 1].at < selectedBuffer->cursor &&
+            entriesAt[i].at >= selectedBuffer->cursor) {
+          FocusOnEntry(i - 1);
+          return;
+        }
+      }
+      FocusOnEntry(entriesCount - 1);
+    }
+  }
+}
 void StartSearch() {
   isSearchVisible = 1;
   FindEntries(selectedBuffer);
 
-  MoveNextOnSearch();
+  FindClosestMatch();
 }
 
 typedef struct SelectionRange {
@@ -304,7 +339,7 @@ void FormatSelectedFile() {
   VirtualFreeMemory(output);
 }
 void RunCode() {
-  /////////////////////////
+  SaveSelectedFile();
   char* cmd = "cmd /c .\\misc\\build.bat";
   char output[KB(10)] = {0};
   int len = 0;
@@ -536,6 +571,9 @@ void AppendCharIntoCommand(char ch) {
       if (IsCommand("_f"))
         FormatSelectedFile();
 
+      if (IsCommand("_w"))
+        SaveSelectedFile();
+
       if (IsCommand("u")) {
         i32 currentCursor = selectedBuffer->cursor;
         Change* appliedChange = UndoLastChange(selectedBuffer);
@@ -604,8 +642,29 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
       if (wParam == VK_RETURN)
         mode = Normal;
       else if (wParam == VK_BACK) {
-        searchTerm[--searchLen] = '\0';
+        if (searchLen > 0) {
+          searchTerm[--searchLen] = '\0';
+          FindEntries(selectedBuffer);
+        }
+      }
+      if (wParam == 'W' && IsKeyPressed(VK_CONTROL)) {
+        searchLen = MaxI32(searchLen - 1, 0);
+        while (searchTerm[searchLen] != ' ' || searchLen == 0)
+          searchLen--;
+        searchTerm[searchLen] = '\0';
         FindEntries(selectedBuffer);
+      }
+      if (wParam == 'U' && IsKeyPressed(VK_CONTROL)) {
+        searchLen = 0;
+        searchTerm[searchLen] = '\0';
+        FindEntries(selectedBuffer);
+      }
+      if (wParam == 'N' && IsKeyPressed(VK_CONTROL)) {
+        MoveNextOnSearch();
+      }
+
+      if (wParam == 'P' && IsKeyPressed(VK_CONTROL)) {
+        MovePrevOnSearch();
       }
     } else if (mode == FileSelection) {
       if (wParam == VK_ESCAPE)
