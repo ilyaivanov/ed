@@ -478,14 +478,25 @@ void AppendCharIntoCommand(char ch) {
       }
       if (IsCommand("O")) {
         i32 lineStart = FindLineStart(selectedBuffer, selectedBuffer->cursor);
+        i32 offset = GetLineOffset(selectedBuffer, lineStart);
+
         InsertCharAt(selectedBuffer, lineStart, '\n');
-        selectedBuffer->cursor = lineStart;
+        for (int i = 0; i < offset; i++)
+          InsertCharAt(selectedBuffer, lineStart + i, ' ');
+
+        selectedBuffer->cursor = lineStart + offset;
         mode = Insert;
       }
       if (IsCommand("o")) {
         i32 lineEnd = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
+        i32 offset =
+            GetLineOffset(selectedBuffer, FindLineStart(selectedBuffer, selectedBuffer->cursor));
+
         InsertCharAt(selectedBuffer, lineEnd, '\n');
-        selectedBuffer->cursor = lineEnd + 1;
+        for (int i = 0; i < offset; i++)
+          InsertCharAt(selectedBuffer, lineEnd + 1 + i, ' ');
+
+        selectedBuffer->cursor = lineEnd + 1 + offset;
         mode = Insert;
       }
       if (IsCommand("v")) {
@@ -604,6 +615,7 @@ void AppendCharIntoCommand(char ch) {
       }
       if (IsCommand("/")) {
         mode = LocalSearchTyping;
+        isSearchVisible = 1;
       }
 
       if (IsCommand("tt")) {
