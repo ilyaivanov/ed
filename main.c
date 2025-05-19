@@ -362,6 +362,9 @@ typedef struct Res {
 int TryParse(char* line, Res* res) {
   char* p = line;
 
+  if (*p && *p == '.' && *(p + 1) && *(p + 1) == '\\')
+    p += 2;
+
   while (*p && *p >= 'a' && *p <= 'z') {
     res->filename[res->filenameLen++] = *p;
     p++;
