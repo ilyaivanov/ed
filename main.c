@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define IS_RIGHT_BUFFER_VISIBLE 0
+int isRightBufferVisible = 0;
 
 HWND mainWindow;
 int isRunning = 1;
@@ -16,15 +16,18 @@ int isFullscreen = 0;
 
 // u32 colorsBg = 0x0F1419;
 u32 colorsBg = 0x121212;
-u32 colorsFont = 0xE6E6E6;
+u32 colorsFont = 0xE6E1CF; // 0xCCCCCC;
 u32 colorsFooter = 0x1D1D1D;
 
 u32 colorsCursorNormal = 0xFFDC32;
 u32 colorsCursorInsert = 0xFC2837;
 u32 colorsCursorVisual = 0x3E9FBE;
+u32 colorsCursorLocalSearchType = 0x3e9f9f;
+
 u32 colorsCursorLineNormal = 0x3F370E;
 u32 colorsCursorLineInsert = 0x3D2425;
 u32 colorsCursorLineVisual = 0x202020;
+u32 colorsCursorLineLocalSearchType = 0x203030;
 
 u32 colorsSearchResult = 0x226622;
 u32 colorsSelection = 0x253340;
@@ -47,17 +50,17 @@ i32 vertPadding = 10;
 i32 footerPadding = 2;
 Rect screen = {0};
 
+char* rootDir = ".\\";
 Buffer leftBuffer;
-char* leftFilePath = "..\\misc\\tasks.txt";
+char* leftFilePath = ".\\misc\\tasks.txt";
 
 Buffer middleBuffer;
-char* middleFilePath = "..\\main.c";
+char* middleFilePath = ".\\main.c";
 
 Buffer rightBuffer;
-char* rightFilePath = "..\\vim.c";
 
-char* allFiles[] = {"main.c", "font.c",  "anim.c",          "math.c",          "search.c",
-                    "vim.c",  "win32.c", "misc\\tasks.txt", "misc\\build2.bat"};
+char* allFiles[] = {"main.c",   "font.c", "anim.c",  "math.c",
+                    "search.c", "vim.c",  "win32.c", "misc\\tasks.txt", "misc\\build.bat"};
 
 typedef enum EdFile { Left, Middle, Right } EdFile;
 
@@ -67,7 +70,7 @@ Rect* selectedRect;
 EdFile selectedFile;
 
 void SelectFile(EdFile file) {
-  if (!IS_RIGHT_BUFFER_VISIBLE && file == Right)
+  if (!isRightBufferVisible && file == Right)
     return;
   selectedFile = file;
   if (file == Left) {
@@ -147,6 +150,7 @@ i32 GetPageHeight(Buffer* buffer) {
   }
   return rows * lineHeightPx;
 }
+
 void SetCursorPosition(i32 v) {
   selectedBuffer->cursor = Clampi32(v, 0, selectedBuffer->size - 1);
   CursorPos cursor = GetCursorPosition(selectedBuffer);
@@ -160,31 +164,81 @@ void SetCursorPosition(i32 v) {
     selectedOffset->target = Clamp(cursorPos - (float)selectedRect->height / 2.0f, 0, maxScroll);
 }
 
-void MoveNextOnSearch() {
+void SaveSelectedFile() {
+  WriteMyFile(selectedBuffer->filePath, selectedBuffer->content, selectedBuffer->size);
+  selectedBuffer->isSaved = 1;
+}
+
+void LoadFileIntoSelectedBuffer(char* path) {
+  SaveSelectedFile();
+  VirtualFreeMemory(selectedBuffer->content);
+  VirtualFreeMemory(selectedBuffer->changeArena.contents);
+  *selectedBuffer = ReadFileIntoDoubledSizedBuffer(path);
+  InitChangeArena(selectedBuffer);
+  mode = Normal;
+  selectedOffset->target = selectedOffset->current = 0;
+}
+
+void FocusOnEntry(int index) {
+  SetCursorPosition(entriesAt[index].at);
+  currentEntry = index;
+}
+
+void FindClosestMatch() {
   if (entriesCount > 0) {
-    if (selectedBuffer->cursor < entriesAt[0].at) {
-      SetCursorPosition(entriesAt[0].at);
-      currentEntry = 0;
-    } else {
+    if (selectedBuffer->cursor < entriesAt[0].at)
+      FocusOnEntry(0);
+    else {
       for (int i = 1; i < entriesCount; i++) {
-        if (entriesAt[i - 1].at <= selectedBuffer->cursor &&
-            entriesAt[i].at > selectedBuffer->cursor) {
-          currentEntry = i;
-          SetCursorPosition(entriesAt[i].at);
+        if (entriesAt[i - 1].at < selectedBuffer->cursor &&
+            entriesAt[i].at >= selectedBuffer->cursor) {
+          FocusOnEntry(i);
           return;
         }
       }
-      SetCursorPosition(entriesAt[0].at);
-      currentEntry = 0;
+      FocusOnEntry(0);
     }
   }
 }
 
+void MoveNextOnSearch() {
+  if (entriesCount > 0) {
+    if (selectedBuffer->cursor < entriesAt[0].at)
+      FocusOnEntry(0);
+    else {
+      for (int i = 1; i < entriesCount; i++) {
+        if (entriesAt[i - 1].at <= selectedBuffer->cursor &&
+            entriesAt[i].at > selectedBuffer->cursor) {
+          FocusOnEntry(i);
+          return;
+        }
+      }
+      FocusOnEntry(0);
+    }
+  }
+}
+
+void MovePrevOnSearch() {
+  if (entriesCount > 0) {
+    if (selectedBuffer->cursor < entriesAt[0].at)
+      FocusOnEntry(entriesCount - 1);
+    else {
+      for (int i = 1; i < entriesCount; i++) {
+        if (entriesAt[i - 1].at < selectedBuffer->cursor &&
+            entriesAt[i].at >= selectedBuffer->cursor) {
+          FocusOnEntry(i - 1);
+          return;
+        }
+      }
+      FocusOnEntry(entriesCount - 1);
+    }
+  }
+}
 void StartSearch() {
   isSearchVisible = 1;
   FindEntries(selectedBuffer);
 
-  MoveNextOnSearch();
+  FindClosestMatch();
 }
 
 typedef struct SelectionRange {
@@ -212,12 +266,12 @@ void OnLayout() {
   footerRect.height = footerHeight;
   footerRect.y = screen.height - footerRect.height;
 
-  leftRect.width = 50 * font.charWidth;
+  leftRect.width = 70 * font.charWidth;
   leftRect.height = canvas.height - footerRect.height;
 
   i32 codeWidth = (screen.width - leftRect.width) / 2;
   middleRect.x = leftRect.width;
-  if (IS_RIGHT_BUFFER_VISIBLE) {
+  if (isRightBufferVisible) {
     middleRect.width = canvas.width / 3;
     rightRect.width = canvas.width - (leftRect.width + middleRect.width);
   } else {
@@ -270,10 +324,6 @@ void RemoveCurrentChar() {
   }
 }
 
-void SaveSelectedFile() {
-  WriteMyFile(selectedBuffer->filePath, selectedBuffer->content, selectedBuffer->size);
-  selectedBuffer->isSaved = 1;
-}
 void FormatSelectedFile() {
 
   SaveSelectedFile();
@@ -296,16 +346,143 @@ void FormatSelectedFile() {
   // I don;t want to parse entire JSON yet
   int newCursor = atoi(output + 12);
 
-  memmove(selectedBuffer->content, nextTextStart, strlen(nextTextStart));
-  selectedBuffer->size = strlen(nextTextStart);
+  ReplaceBufferContent(selectedBuffer, nextTextStart);
+  // memmove(selectedBuffer->content, nextTextStart, strlen(nextTextStart));
+  // selectedBuffer->size = strlen(nextTextStart);
+  //
   selectedBuffer->cursor = newCursor;
   VirtualFreeMemory(output);
 }
+typedef struct Res {
+  char filename[256];
+  int filenameLen;
+  int line;
+  int offset;
+} Res;
+
+int TryParse(char* line, Res* res) {
+  char* p = line;
+
+  if (*p && *p == '.' && *(p + 1) && *(p + 1) == '\\')
+    p += 2;
+
+  while (*p && *p >= 'a' && *p <= 'z') {
+    res->filename[res->filenameLen++] = *p;
+    p++;
+  }
+
+  if (*p != '.')
+    return 0;
+
+  p++;
+
+  if (*p != 'c')
+    return 0;
+
+  p++;
+
+  if (*p != ':')
+    return 0;
+
+  p++;
+
+  res->filename[res->filenameLen++] = '.';
+  res->filename[res->filenameLen++] = 'c';
+
+  int val = 0;
+  if (*p < '0' || *p > '9')
+    return 0; // expect digit
+  while (*p >= '0' && *p <= '9') {
+    val = val * 10 + (*p - '0');
+    p++;
+  }
+  res->line = val;
+
+  if (*p != ':')
+    return 1;
+
+  p++;
+
+  val = 0;
+  if (*p < '0' || *p > '9')
+    return 0; // expect digit
+  while (*p >= '0' && *p <= '9') {
+    val = val * 10 + (*p - '0');
+    p++;
+  }
+  res->offset = val;
+
+  return 1;
+}
+
+Res res[10];
+void Parse() {
+  int isStartOfLine = 1;
+  int line = 0;
+  int errorCount = 0;
+  for (int i = 0; i < rightBuffer.size; i++) {
+    char ch = rightBuffer.content[i];
+    if (isStartOfLine) {
+      Res r = {0};
+      if (TryParse(rightBuffer.content + i, &r))
+        res[errorCount++] = r;
+
+      isStartOfLine = 0;
+    }
+    //
+    if (ch == '\n') {
+      isStartOfLine = 1;
+      line++;
+    }
+  }
+}
+
+int IsStrEqual(char* s1, char* s2) {
+  while (*s1 && *s2) {
+    if (*s1 != *s2)
+      return 0;
+    s1++;
+    s2++;
+  }
+  return *s1 == *s2;
+}
+
+void NavigateToError(int pos) {
+  Res r = res[pos];
+  char fullPath[256] = {0};
+  sprintf(fullPath, "%s%s", rootDir, r.filename);
+
+  if (!IsStrEqual(selectedBuffer->filePath, fullPath))
+    LoadFileIntoSelectedBuffer(fullPath);
+
+  int desiredLine = r.line;
+  int line = 1;
+  if (desiredLine == 0)
+    SetCursorPosition(0);
+  for (int i = 0; i < selectedBuffer->size; i++) {
+    if (selectedBuffer->content[i] == '\n') {
+      line++;
+      if (line == desiredLine) {
+        SetCursorPosition(i + r.offset);
+
+        break;
+      }
+    }
+  }
+}
+
 void RunCode() {
-  char* cmd = "cmd /c ..\\misc\\build2.bat";
-  char output[KB(10)] = {0};
+  SaveSelectedFile();
+  char* cmd = "cmd /c .\\misc\\build.bat";
   int len = 0;
+  char output[KB(20)];
   RunCommand(cmd, output, &len);
+  if (len > 0) {
+    CopyStrIntoBuffer(&rightBuffer, output, len);
+    isRightBufferVisible = 1;
+    OnLayout();
+    Parse();
+  }
 }
 
 inline BOOL IsKeyPressed(u32 code) {
@@ -349,11 +526,9 @@ void AppendCharIntoCommand(char ch) {
   } else if (mode == FileSelection) {
     char firstChar = currentCommand[0];
     if (firstChar >= '1' && firstChar <= '9') {
-      SaveSelectedFile();
-      sprintf(selectedBuffer->filePath, "..\\%s", allFiles[firstChar - '1']);
-      VirtualFreeMemory(selectedBuffer->content);
-      *selectedBuffer = ReadFileIntoDoubledSizedBuffer(selectedBuffer->filePath);
-      mode = Normal;
+      char path[512] = {0};
+      sprintf(path, "%s%s", rootDir, allFiles[firstChar - '1']);
+      LoadFileIntoSelectedBuffer(path);
       hasMatchedAnyCommand = 1;
     }
   } else {
@@ -434,14 +609,25 @@ void AppendCharIntoCommand(char ch) {
       }
       if (IsCommand("O")) {
         i32 lineStart = FindLineStart(selectedBuffer, selectedBuffer->cursor);
+        i32 offset = GetLineOffset(selectedBuffer, lineStart);
+
         InsertCharAt(selectedBuffer, lineStart, '\n');
-        selectedBuffer->cursor = lineStart;
+        for (int i = 0; i < offset; i++)
+          InsertCharAt(selectedBuffer, lineStart + i, ' ');
+
+        selectedBuffer->cursor = lineStart + offset;
         mode = Insert;
       }
       if (IsCommand("o")) {
         i32 lineEnd = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
+        i32 offset =
+            GetLineOffset(selectedBuffer, FindLineStart(selectedBuffer, selectedBuffer->cursor));
+
         InsertCharAt(selectedBuffer, lineEnd, '\n');
-        selectedBuffer->cursor = lineEnd + 1;
+        for (int i = 0; i < offset; i++)
+          InsertCharAt(selectedBuffer, lineEnd + 1 + i, ' ');
+
+        selectedBuffer->cursor = lineEnd + 1 + offset;
         mode = Insert;
       }
       if (IsCommand("v")) {
@@ -501,8 +687,16 @@ void AppendCharIntoCommand(char ch) {
         i32 size = 0;
         char* textFromClipboard = ClipboardPaste(mainWindow, &size);
 
-        InsertChars(selectedBuffer, textFromClipboard, size, selectedBuffer->cursor + 1);
-        selectedBuffer->cursor = selectedBuffer->cursor + 1 + size;
+        int whereToInsert = selectedBuffer->cursor + 1;
+        int isInsertingNewLine = StrContainsChar(textFromClipboard, '\n');
+        if (isInsertingNewLine)
+          whereToInsert = FindLineEnd(selectedBuffer, selectedBuffer->cursor) + 1;
+
+        InsertChars(selectedBuffer, textFromClipboard, size, whereToInsert);
+        if (isInsertingNewLine)
+          selectedBuffer->cursor = whereToInsert;
+        else
+          selectedBuffer->cursor = whereToInsert + size;
 
         if (textFromClipboard)
           VirtualFreeMemory(textFromClipboard);
@@ -512,8 +706,17 @@ void AppendCharIntoCommand(char ch) {
         i32 size = 0;
         char* textFromClipboard = ClipboardPaste(mainWindow, &size);
 
-        InsertChars(selectedBuffer, textFromClipboard, size, selectedBuffer->cursor);
-        selectedBuffer->cursor = selectedBuffer->cursor + size;
+        int whereToInsert = selectedBuffer->cursor;
+        int isInsertingNewLine = StrContainsChar(textFromClipboard, '\n');
+        if (isInsertingNewLine)
+          whereToInsert = FindLineStart(selectedBuffer, selectedBuffer->cursor);
+
+        InsertChars(selectedBuffer, textFromClipboard, size, whereToInsert);
+
+        if (isInsertingNewLine)
+          selectedBuffer->cursor = whereToInsert;
+        else
+          selectedBuffer->cursor = whereToInsert + size;
 
         if (textFromClipboard)
           VirtualFreeMemory(textFromClipboard);
@@ -524,11 +727,28 @@ void AppendCharIntoCommand(char ch) {
       if (IsCommand("_r"))
         RunCode();
 
+      if (currentCommandLen == 2 && currentCommand[0] == 'e') {
+        if (currentCommand[1] >= '0' && currentCommand[1] <= '9') {
+          NavigateToError(currentCommand[1] - '1');
+          hasMatchedAnyCommand = 1;
+        }
+      }
+
       if (IsCommand("_e"))
         mode = FileSelection;
 
       if (IsCommand("_f"))
         FormatSelectedFile();
+
+      if (IsCommand("_w"))
+        SaveSelectedFile();
+
+      if (IsCommand("u")) {
+        i32 currentCursor = selectedBuffer->cursor;
+        Change* appliedChange = UndoLastChange(selectedBuffer);
+        if (appliedChange && appliedChange->type != Replaced)
+          SetCursorPosition(appliedChange->at);
+      }
 
       if (IsCommand("_n")) {
         isSearchVisible = 0;
@@ -550,6 +770,8 @@ void AppendCharIntoCommand(char ch) {
       }
       if (IsCommand("/")) {
         mode = LocalSearchTyping;
+
+        isSearchVisible = 1;
       }
 
       if (IsCommand("tt")) {
@@ -576,7 +798,6 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
       if (mode == Insert) {
         if (ch < MAX_CHAR_CODE && ch >= ' ')
           InsertCharAtCursor(selectedBuffer, ch);
-        selectedBuffer->isSaved = 0;
       } else if (mode == LocalSearchTyping) {
         searchTerm[searchLen++] = wParam;
         StartSearch();
@@ -592,8 +813,29 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
       if (wParam == VK_RETURN)
         mode = Normal;
       else if (wParam == VK_BACK) {
-        searchTerm[--searchLen] = '\0';
+        if (searchLen > 0) {
+          searchTerm[--searchLen] = '\0';
+          FindEntries(selectedBuffer);
+        }
+      }
+      if (wParam == 'W' && IsKeyPressed(VK_CONTROL)) {
+        searchLen = MaxI32(searchLen - 1, 0);
+        while (searchTerm[searchLen] != ' ' || searchLen == 0)
+          searchLen--;
+        searchTerm[searchLen] = '\0';
         FindEntries(selectedBuffer);
+      }
+      if (wParam == 'U' && IsKeyPressed(VK_CONTROL)) {
+        searchLen = 0;
+        searchTerm[searchLen] = '\0';
+        FindEntries(selectedBuffer);
+      }
+      if (wParam == 'N' && IsKeyPressed(VK_CONTROL)) {
+        MoveNextOnSearch();
+      }
+
+      if (wParam == 'P' && IsKeyPressed(VK_CONTROL)) {
+        MovePrevOnSearch();
       }
     } else if (mode == FileSelection) {
       if (wParam == VK_ESCAPE)
@@ -614,6 +856,11 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
         RemoveCurrentChar();
       if (wParam == VK_ESCAPE)
         ClearCommand();
+      if (wParam == 'R' && IsKeyPressed(VK_CONTROL)) {
+        Change* appliedChange = RedoLastChange(selectedBuffer);
+        if (appliedChange && appliedChange->type != Replaced)
+          SetCursorPosition(appliedChange->at);
+      }
       if (wParam == '1' && IsKeyPressed(VK_MENU))
         SelectFile(Left);
       if (wParam == '2' && IsKeyPressed(VK_MENU))
@@ -728,12 +975,29 @@ void DrawFooter() {
     CopyMonochromeTextureRectTo(&canvas, &footerRect, &font.textures['*'], x, y, 0xffffff);
 
   int charsToShow = currentCommandLen > 0 ? currentCommandLen : visibleCommandLen;
-  int commandX = footerRect.width / 2;
+  int commandX = (strlen(selectedBuffer->filePath) + 2) * font.charWidth;
   for (int i = 0; i < charsToShow; i++) {
     u32 color = currentCommandLen > 0 ? 0xffffff : 0xbbbbbb;
     CopyMonochromeTextureRectTo(&canvas, &footerRect, &font.textures[currentCommand[i]], commandX,
                                 y, color);
     commandX += font.charWidth;
+  }
+  char posLabel[512];
+
+  CursorPos cursor = GetCursorPosition(selectedBuffer);
+  int chars = sprintf(
+      posLabel,
+      "changes size %d, capacity %d   buffer size %d, capacity %d   pos %d, line %d, offset %d",
+      GetChangeArenaSize(&selectedBuffer->changeArena), selectedBuffer->changeArena.capacity,
+      selectedBuffer->size, selectedBuffer->capacity, selectedBuffer->cursor, cursor.line,
+      cursor.lineOffset);
+  int width = chars * font.charWidth;
+  int posX = screen.width - width - 2 * font.charWidth;
+  int posY = footerRect.y + footerPadding;
+  for (int i = 0; i < chars; i++) {
+    CopyMonochromeTextureRectTo(&canvas, &footerRect, &font.textures[posLabel[i]], posX, posY,
+                                0x888888);
+    posX += font.charWidth;
   }
 }
 
@@ -791,17 +1055,19 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset, EdFile file) {
   i32 x = startX;
   i32 y = rect.y + startY;
 
-  u32 cursorColor = (mode == Normal || mode == LocalSearchTyping) ? colorsCursorNormal
-                    : (mode == Visual || mode == VisualLine)      ? colorsCursorVisual
-                                                                  : colorsCursorInsert;
+  u32 cursorColor = mode == Normal                           ? colorsCursorNormal
+                    : mode == LocalSearchTyping              ? colorsCursorLocalSearchType
+                    : (mode == Visual || mode == VisualLine) ? colorsCursorVisual
+                                                             : colorsCursorInsert;
 
   CursorPos cursor = GetCursorPosition(buffer);
   i32 cursorX = x + font.charWidth * cursor.lineOffset;
   i32 cursorY = y + lineHeightPx * cursor.line;
 
-  u32 lineColor = (mode == Normal || mode == LocalSearchTyping) ? colorsCursorLineNormal
-                  : (mode == Visual || mode == VisualLine)      ? colorsCursorLineVisual
-                                                                : colorsCursorLineInsert;
+  u32 lineColor = mode == Normal                           ? colorsCursorLineNormal
+                  : mode == LocalSearchTyping              ? colorsCursorLineLocalSearchType
+                  : (mode == Visual || mode == VisualLine) ? colorsCursorLineVisual
+                                                           : colorsCursorLineInsert;
 
   if (!buffer->isSaved)
     PaintRect(rect.x + rect.width - 30 - scrollbarWidth, rect.y, 20, 10, 0x882222);
@@ -845,13 +1111,14 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset, EdFile file) {
     int searchX = rect.x + rect.width - 400;
     int searchY = rect.y + 13;
     for (i32 i = 0; i < searchLen; i++) {
-
+      u32 searchColor = mode == LocalSearchTyping ? 0x66ffff : 0xaaaaaa;
       CopyMonochromeTextureRectTo(&canvas, &rect, &font.textures[searchTerm[i]], searchX, searchY,
-                                  0xaaaaaa);
+                                  searchColor);
       searchX += font.charWidth;
     }
     char s[512] = {0};
-    sprintf(s, "%d of %d", currentEntry, entriesCount);
+    int visibleCurrent = entriesCount > 0 ? currentEntry + 1 : 0;
+    sprintf(s, "%d of %d", visibleCurrent, entriesCount);
     char* a = s;
     searchX += font.charWidth * 4;
     while (*a) {
@@ -956,15 +1223,19 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
 
   dc = GetDC(mainWindow);
   leftBuffer = ReadFileIntoDoubledSizedBuffer(leftFilePath);
-
+  InitChangeArena(&leftBuffer);
   middleBuffer = ReadFileIntoDoubledSizedBuffer(middleFilePath);
+  InitChangeArena(&middleBuffer);
   //
-  rightBuffer = ReadFileIntoDoubledSizedBuffer(rightFilePath);
+  // rightBuffer = ReadFileIntoDoubledSizedBuffer(rightFilePath);
+  rightBuffer.content = VirtualAllocateMemory(KB(500));
+  rightBuffer.capacity = KB(500);
 
   SelectFile(Middle);
 
   InitAnimations();
 
+  // InitChanges(selectedBuffer, &changeArena);
   i64 startCounter = GetPerfCounter();
   while (isRunning) {
     MSG msg;

@@ -13,6 +13,58 @@ OverallProgress
 
 
 Timeline
+Week 4
+  Plan
+     - Enter in norma\insert modes should respect line offsets as O o
+     - Tab and shift-tab should add\remove tabsize spaces both normal and insert modes
+     - Split these notes into two vertical splits with compilation erros
+     - Highlight keywords and hardcoded types
+     - Highlight comments and strings
+     - Integrate ctags with go to definition
+     - Make p P behave like in vim
+     - Implement F f T t motions
+     - Start working on text objects
+     - Text wrap modes: no, word-break, char-break
+     - Nice looking tree in github when creating PR. Consider this for file explorer 
+     - <C-W> <C-U> in insert mode
+     - Think about better structure. mainly deps main.c <-> vim.c
+ 
+  Monday
+    - Make p P behave like in vim
+
+
+
+Week 3
+Sunday
+  - Nothing
+  
+Saturday
+  - Fixing notes and continuing using Ed
+
+Friday
+  - Starting to use editor without vim
+  Notes: 
+   - P and p not inserting after cursor is several lines are copied
+   - local search is applied to another buffer
+   - local search is not recalculated when editing a document
+   - if I'm runnind I should show results, like errors or something
+   - removing chars from local search can go negative, like -2
+   - need to show if focus on local search term or not
+   - each time I type I advance in search
+   - can't switch buffer in local search mode
+   - if file haven't changed - don't write it. Messes up git history
+   - File navigation sucks, maybe just add an option to insert path
+
+
+
+Thursday
+  - Finally finish with the undo\redo
+     - by simplifying the hell out of changes
+
+Wednesday
+  - Cursor position on the footer
+  - Working on undo\redo
+
 Week 2
 10.05 Saturday
   - Change fontSize at runtime
