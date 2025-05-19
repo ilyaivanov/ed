@@ -406,7 +406,6 @@ i32 JumpParagraphDown(Buffer* buffer) {
 }
 
 i32 JumpParagraphUp(Buffer* buffer) {
-
   i32 res = buffer->cursor - 1;
   while (res > 0) {
     i32 lineStart = FindLineStart(buffer, res);
@@ -416,6 +415,15 @@ i32 JumpParagraphUp(Buffer* buffer) {
     res = lineStart - 1;
   }
   return res;
+}
+
+void BreakLineAtCursor(Buffer* buffer) {
+  int offset = GetLineOffset(buffer, FindLineStart(buffer, buffer->cursor));
+  
+  InsertCharAtCursor(buffer, '\n');
+  for(int i = 0; i < offset; i++)
+  InsertCharAtCursor(buffer, ' ');
+
 }
 
 // TODO: this could be optimized, no need to traverse whole file for each selection line
@@ -432,6 +440,6 @@ i32 GetLineLength(Buffer* text, i32 line) {
     } else {
       currentLineLength++;
     }
-  }
+ }
   return currentLineLength;
 }

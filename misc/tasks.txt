@@ -31,6 +31,8 @@ Week 4
  
   Monday
     - Make p P behave like in vim
+    - Show right buffer again
+    - Minor fixes
 
 
 

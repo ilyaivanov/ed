@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-int isRightBufferVisible = 0;
+int isRightBufferVisible = 1;
 
 HWND mainWindow;
 int isRunning = 1;
@@ -61,6 +61,7 @@ char* middleFilePath = ".\\main.c";
 
 Buffer compilationOutputBuffer;
 Buffer rightBuffer;
+char* rightFilePath = ".\\vim.c";
 
 char* allFiles[] = {"main.c", "font.c",  "anim.c",          "math.c",         "search.c",
                     "vim.c",  "win32.c", "misc\\tasks.txt", "misc\\build.bat"};
@@ -850,14 +851,14 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
       if (wParam == VK_ESCAPE)
         mode = Normal;
       if (wParam == VK_RETURN)
-        InsertCharAtCursor(selectedBuffer, '\n');
+        BreakLineAtCursor(selectedBuffer);
       else if (wParam == 'B' && IsKeyPressed(VK_CONTROL))
         RemoveCurrentChar();
       else if (wParam == VK_BACK)
         RemoveCurrentChar();
     } else if (mode == Normal) {
       if (wParam == VK_RETURN)
-        InsertCharAtCursor(selectedBuffer, '\n');
+        BreakLineAtCursor(selectedBuffer);
       else if (wParam == VK_BACK)
         RemoveCurrentChar();
       if (wParam == VK_ESCAPE)
@@ -1200,11 +1201,14 @@ void Draw() {
   u32 borderColor = 0x222222;
   RectFillRightBorder(leftRect, 4, borderColor);
   RectFillRightBorder(middleRect, 4, borderColor);
+  RectFillRightBorder(rightRect, 4, borderColor);
+
   RectFillRightBorder(compilationRect, 4, borderColor);
   RectFillTopBorder(compilationRect, 4, borderColor);
 
   DrawArea(leftRect, &leftBuffer, &leftOffset, Left);
   DrawArea(middleRect, &middleBuffer, &middleOffset, Middle);
+  DrawArea(rightRect, &rightBuffer, &rightOffset, Right);
   DrawArea(compilationRect, &compilationOutputBuffer, &compilationOffset, CompilationResults);
 
   DrawFooter();
@@ -1233,12 +1237,16 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
     SetFullscreen(mainWindow, 1);
 
   dc = GetDC(mainWindow);
+
   leftBuffer = ReadFileIntoDoubledSizedBuffer(leftFilePath);
   InitChangeArena(&leftBuffer);
+
   middleBuffer = ReadFileIntoDoubledSizedBuffer(middleFilePath);
   InitChangeArena(&middleBuffer);
-  //
-  // rightBuffer = ReadFileIntoDoubledSizedBuffer(rightFilePath);
+
+  rightBuffer = ReadFileIntoDoubledSizedBuffer(rightFilePath);
+  InitChangeArena(&rightBuffer);
+
   compilationOutputBuffer.capacity = KB(500);
   compilationOutputBuffer.content = VirtualAllocateMemory(compilationOutputBuffer.capacity);
 
