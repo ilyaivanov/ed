@@ -59,7 +59,7 @@ char* middleFilePath = ".\\main.c";
 
 Buffer rightBuffer;
 
-char* allFiles[] = {"main.c",   "font.c", "anim.c",  "play.c",          "math.c",
+char* allFiles[] = {"main.c",   "font.c", "anim.c",  "math.c",
                     "search.c", "vim.c",  "win32.c", "misc\\tasks.txt", "misc\\build.bat"};
 
 typedef enum EdFile { Left, Middle, Right } EdFile;
@@ -150,6 +150,7 @@ i32 GetPageHeight(Buffer* buffer) {
   }
   return rows * lineHeightPx;
 }
+
 void SetCursorPosition(i32 v) {
   selectedBuffer->cursor = Clampi32(v, 0, selectedBuffer->size - 1);
   CursorPos cursor = GetCursorPosition(selectedBuffer);
@@ -709,9 +710,9 @@ void AppendCharIntoCommand(char ch) {
         int isInsertingNewLine = StrContainsChar(textFromClipboard, '\n');
         if (isInsertingNewLine)
           whereToInsert = FindLineStart(selectedBuffer, selectedBuffer->cursor);
-        
+
         InsertChars(selectedBuffer, textFromClipboard, size, whereToInsert);
-       
+
         if (isInsertingNewLine)
           selectedBuffer->cursor = whereToInsert;
         else
