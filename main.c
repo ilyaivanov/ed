@@ -683,8 +683,16 @@ void AppendCharIntoCommand(char ch) {
         i32 size = 0;
         char* textFromClipboard = ClipboardPaste(mainWindow, &size);
 
-        InsertChars(selectedBuffer, textFromClipboard, size, selectedBuffer->cursor + 1);
-        selectedBuffer->cursor = selectedBuffer->cursor + 1 + size;
+        int whereToInsert = selectedBuffer->cursor + 1;
+        int isInsertingNewLine = StrContainsChar(textFromClipboard, '\n');
+        if (isInsertingNewLine)
+          whereToInsert = FindLineEnd(selectedBuffer, selectedBuffer->cursor) + 1;
+
+        InsertChars(selectedBuffer, textFromClipboard, size, whereToInsert);
+        if (isInsertingNewLine)
+          selectedBuffer->cursor = whereToInsert;
+        else
+          selectedBuffer->cursor = whereToInsert + size;
 
         if (textFromClipboard)
           VirtualFreeMemory(textFromClipboard);
@@ -694,8 +702,17 @@ void AppendCharIntoCommand(char ch) {
         i32 size = 0;
         char* textFromClipboard = ClipboardPaste(mainWindow, &size);
 
-        InsertChars(selectedBuffer, textFromClipboard, size, selectedBuffer->cursor);
-        selectedBuffer->cursor = selectedBuffer->cursor + size;
+        int whereToInsert = selectedBuffer->cursor;
+        int isInsertingNewLine = StrContainsChar(textFromClipboard, '\n');
+        if (isInsertingNewLine)
+          whereToInsert = FindLineStart(selectedBuffer, selectedBuffer->cursor);
+        
+        InsertChars(selectedBuffer, textFromClipboard, size, whereToInsert);
+       
+        if (isInsertingNewLine)
+          selectedBuffer->cursor = whereToInsert;
+        else
+          selectedBuffer->cursor = whereToInsert + size;
 
         if (textFromClipboard)
           VirtualFreeMemory(textFromClipboard);

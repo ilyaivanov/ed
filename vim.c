@@ -59,6 +59,15 @@ int GetChangeArenaSize(ChangeArena* arena) {
   return res;
 }
 
+int StrContainsChar(char* str, char ch) {
+  while (*str) {
+    if (*str == ch)
+      return 1;
+    str++;
+  }
+  return *str == ch;
+}
+
 i32 FindLineStart(Buffer* buffer, i32 pos) {
   while (pos > 0 && buffer->content[pos - 1] != '\n')
     pos--;
