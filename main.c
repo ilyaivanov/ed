@@ -429,7 +429,7 @@ void Parse() {
   Buffer* buf = &compilationOutputBuffer;
   for (int i = 0; i < buf->size; i++) {
     char ch = buf->content[i];
-    if (isStartOfLine) {
+    if (isStartOfLine && errorCount < 9) {
       Res r = {0};
       if (TryParse(buf->content + i, &r))
         res[errorCount++] = r;
