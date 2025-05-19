@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define IS_RIGHT_BUFFER_VISIBLE 0
+int isRightBufferVisible = 0;
 
 HWND mainWindow;
 int isRunning = 1;
@@ -16,7 +16,7 @@ int isFullscreen = 0;
 
 // u32 colorsBg = 0x0F1419;
 u32 colorsBg = 0x121212;
-u32 colorsFont = 0xCCCCCC;
+u32 colorsFont = 0xE6E1CF; // 0xCCCCCC;
 u32 colorsFooter = 0x1D1D1D;
 
 u32 colorsCursorNormal = 0xFFDC32;
@@ -50,6 +50,7 @@ i32 vertPadding = 10;
 i32 footerPadding = 2;
 Rect screen = {0};
 
+char* rootDir = ".\\";
 Buffer leftBuffer;
 char* leftFilePath = ".\\misc\\tasks.txt";
 
@@ -57,10 +58,9 @@ Buffer middleBuffer;
 char* middleFilePath = ".\\main.c";
 
 Buffer rightBuffer;
-char* rightFilePath = ".\\vim.c";
 
-char* allFiles[] = {"main.c", "font.c",  "anim.c",          "math.c",          "search.c",
-                    "vim.c",  "win32.c", "misc\\tasks.txt", "misc\\build2.bat"};
+char* allFiles[] = {"main.c",   "font.c", "anim.c",  "play.c",          "math.c",
+                    "search.c", "vim.c",  "win32.c", "misc\\tasks.txt", "misc\\build.bat"};
 
 typedef enum EdFile { Left, Middle, Right } EdFile;
 
@@ -70,7 +70,7 @@ Rect* selectedRect;
 EdFile selectedFile;
 
 void SelectFile(EdFile file) {
-  if (!IS_RIGHT_BUFFER_VISIBLE && file == Right)
+  if (!isRightBufferVisible && file == Right)
     return;
   selectedFile = file;
   if (file == Left) {
@@ -161,6 +161,21 @@ void SetCursorPosition(i32 v) {
     selectedOffset->target = Clamp(cursorPos - (float)selectedRect->height / 2.0f, 0, maxScroll);
   else if ((selectedOffset->target + lineToLookAhead) > cursorPos)
     selectedOffset->target = Clamp(cursorPos - (float)selectedRect->height / 2.0f, 0, maxScroll);
+}
+
+void SaveSelectedFile() {
+  WriteMyFile(selectedBuffer->filePath, selectedBuffer->content, selectedBuffer->size);
+  selectedBuffer->isSaved = 1;
+}
+
+void LoadFileIntoSelectedBuffer(char* path) {
+  SaveSelectedFile();
+  VirtualFreeMemory(selectedBuffer->content);
+  VirtualFreeMemory(selectedBuffer->changeArena.contents);
+  *selectedBuffer = ReadFileIntoDoubledSizedBuffer(path);
+  InitChangeArena(selectedBuffer);
+  mode = Normal;
+  selectedOffset->target = selectedOffset->current = 0;
 }
 
 void FocusOnEntry(int index) {
@@ -255,7 +270,7 @@ void OnLayout() {
 
   i32 codeWidth = (screen.width - leftRect.width) / 2;
   middleRect.x = leftRect.width;
-  if (IS_RIGHT_BUFFER_VISIBLE) {
+  if (isRightBufferVisible) {
     middleRect.width = canvas.width / 3;
     rightRect.width = canvas.width - (leftRect.width + middleRect.width);
   } else {
@@ -308,10 +323,6 @@ void RemoveCurrentChar() {
   }
 }
 
-void SaveSelectedFile() {
-  WriteMyFile(selectedBuffer->filePath, selectedBuffer->content, selectedBuffer->size);
-  selectedBuffer->isSaved = 1;
-}
 void FormatSelectedFile() {
 
   SaveSelectedFile();
@@ -341,12 +352,133 @@ void FormatSelectedFile() {
   selectedBuffer->cursor = newCursor;
   VirtualFreeMemory(output);
 }
+typedef struct Res {
+  char filename[256];
+  int filenameLen;
+  int line;
+  int offset;
+} Res;
+
+int TryParse(char* line, Res* res) {
+  char* p = line;
+
+  while (*p && *p >= 'a' && *p <= 'z') {
+    res->filename[res->filenameLen++] = *p;
+    p++;
+  }
+
+  if (*p != '.')
+    return 0;
+
+  p++;
+
+  if (*p != 'c')
+    return 0;
+
+  p++;
+
+  if (*p != ':')
+    return 0;
+
+  p++;
+
+  res->filename[res->filenameLen++] = '.';
+  res->filename[res->filenameLen++] = 'c';
+
+  int val = 0;
+  if (*p < '0' || *p > '9')
+    return 0; // expect digit
+  while (*p >= '0' && *p <= '9') {
+    val = val * 10 + (*p - '0');
+    p++;
+  }
+  res->line = val;
+
+  if (*p != ':')
+    return 1;
+
+  p++;
+
+  val = 0;
+  if (*p < '0' || *p > '9')
+    return 0; // expect digit
+  while (*p >= '0' && *p <= '9') {
+    val = val * 10 + (*p - '0');
+    p++;
+  }
+  res->offset = val;
+
+  return 1;
+}
+
+Res res[10];
+void Parse() {
+  int isStartOfLine = 1;
+  int line = 0;
+  int errorCount = 0;
+  for (int i = 0; i < rightBuffer.size; i++) {
+    char ch = rightBuffer.content[i];
+    if (isStartOfLine) {
+      Res r = {0};
+      if (TryParse(rightBuffer.content + i, &r))
+        res[errorCount++] = r;
+
+      isStartOfLine = 0;
+    }
+    //
+    if (ch == '\n') {
+      isStartOfLine = 1;
+      line++;
+    }
+  }
+}
+
+int IsStrEqual(char* s1, char* s2) {
+  while (*s1 && *s2) {
+    if (*s1 != *s2)
+      return 0;
+    s1++;
+    s2++;
+  }
+  return *s1 == *s2;
+}
+
+void NavigateToError(int pos) {
+  Res r = res[pos];
+  char fullPath[256] = {0};
+  sprintf(fullPath, "%s%s", rootDir, r.filename);
+
+  if (!IsStrEqual(selectedBuffer->filePath, fullPath))
+    LoadFileIntoSelectedBuffer(fullPath);
+
+  int desiredLine = r.line;
+  int line = 1;
+  if (desiredLine == 0)
+    SetCursorPosition(0);
+  for (int i = 0; i < selectedBuffer->size; i++) {
+    if (selectedBuffer->content[i] == '\n') {
+      line++;
+      if (line == desiredLine) {
+        SetCursorPosition(i + r.offset);
+
+        break;
+      }
+    }
+  }
+}
+
 void RunCode() {
   SaveSelectedFile();
   char* cmd = "cmd /c .\\misc\\build.bat";
-  char output[KB(10)] = {0};
   int len = 0;
+  char output[KB(20)];
   RunCommand(cmd, output, &len);
+  if (len > 0) {
+    CopyStrIntoBuffer(&rightBuffer, output, len);
+    isRightBufferVisible = 1;
+    OnLayout();
+    Parse();
+  }
 }
 
 inline BOOL IsKeyPressed(u32 code) {
@@ -390,14 +522,9 @@ void AppendCharIntoCommand(char ch) {
   } else if (mode == FileSelection) {
     char firstChar = currentCommand[0];
     if (firstChar >= '1' && firstChar <= '9') {
-      SaveSelectedFile();
-      sprintf(selectedBuffer->filePath, ".\\%s", allFiles[firstChar - '1']);
-      VirtualFreeMemory(selectedBuffer->content);
-      VirtualFreeMemory(selectedBuffer->changeArena.contents);
-      *selectedBuffer = ReadFileIntoDoubledSizedBuffer(selectedBuffer->filePath);
-      InitChangeArena(selectedBuffer);
-      mode = Normal;
-      selectedOffset->target = selectedOffset->current = 0;
+      char path[512] = {0};
+      sprintf(path, "%s%s", rootDir, allFiles[firstChar - '1']);
+      LoadFileIntoSelectedBuffer(path);
       hasMatchedAnyCommand = 1;
     }
   } else {
@@ -579,6 +706,13 @@ void AppendCharIntoCommand(char ch) {
       if (IsCommand("_r"))
         RunCode();
 
+      if (currentCommandLen == 2 && currentCommand[0] == 'e') {
+        if (currentCommand[1] >= '0' && currentCommand[1] <= '9') {
+          NavigateToError(currentCommand[1] - '1');
+          hasMatchedAnyCommand = 1;
+        }
+      }
+
       if (IsCommand("_e"))
         mode = FileSelection;
 
@@ -615,6 +749,7 @@ void AppendCharIntoCommand(char ch) {
       }
       if (IsCommand("/")) {
         mode = LocalSearchTyping;
+
         isSearchVisible = 1;
       }
 
@@ -899,7 +1034,7 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset, EdFile file) {
   i32 x = startX;
   i32 y = rect.y + startY;
 
-  u32 cursorColor = (mode == Normal)                         ? colorsCursorNormal
+  u32 cursorColor = mode == Normal                           ? colorsCursorNormal
                     : mode == LocalSearchTyping              ? colorsCursorLocalSearchType
                     : (mode == Visual || mode == VisualLine) ? colorsCursorVisual
                                                              : colorsCursorInsert;
@@ -908,7 +1043,7 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset, EdFile file) {
   i32 cursorX = x + font.charWidth * cursor.lineOffset;
   i32 cursorY = y + lineHeightPx * cursor.line;
 
-  u32 lineColor = (mode == Normal)                         ? colorsCursorLineNormal
+  u32 lineColor = mode == Normal                           ? colorsCursorLineNormal
                   : mode == LocalSearchTyping              ? colorsCursorLineLocalSearchType
                   : (mode == Visual || mode == VisualLine) ? colorsCursorLineVisual
                                                            : colorsCursorLineInsert;
@@ -1071,7 +1206,9 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
   middleBuffer = ReadFileIntoDoubledSizedBuffer(middleFilePath);
   InitChangeArena(&middleBuffer);
   //
-  rightBuffer = ReadFileIntoDoubledSizedBuffer(rightFilePath);
+  // rightBuffer = ReadFileIntoDoubledSizedBuffer(rightFilePath);
+  rightBuffer.content = VirtualAllocateMemory(KB(500));
+  rightBuffer.capacity = KB(500);
 
   SelectFile(Middle);
 

@@ -111,11 +111,16 @@ void BufferInsertChars(Buffer* buffer, char* chars, i32 len, i32 at) {
   while (buffer->size + len >= buffer->capacity)
     DoubleCapacityIfFull(buffer);
 
-  buffer->size += len;
+  if (buffer->size != 0) {
 
-  char* from = buffer->content + at;
-  char* to = buffer->content + at + len;
-  memmove(to, from, buffer->size - at);
+    buffer->size += len;
+
+    char* from = buffer->content + at;
+    char* to = buffer->content + at + len;
+    memmove(to, from, buffer->size - at);
+  } else {
+    buffer->size = len;
+  }
 
   for (i32 i = at; i < at + len; i++) {
     buffer->content[i] = chars[i - at];
@@ -217,12 +222,21 @@ void ReplaceBufferContent(Buffer* buffer, char* newContent) {
 
   c->type = Replaced;
   c->at = 0;
-  c->size = buffer->size - 1;
-  c->newTextSize = newContentLen - 1;
+  c->size = buffer->size;
+  c->newTextSize = newContentLen;
   memmove(c->text, buffer->content, c->size);
   memmove(c->text + c->size, newContent, c->newTextSize);
 
   ApplyChange(buffer, c);
+}
+
+void CopyStrIntoBuffer(Buffer* buffer, char* str, int size) {
+  int fileSizeAfter = 0;
+  for (i32 i = 0; i < size; i++) {
+    if (str[i] != '\r')
+      buffer->content[fileSizeAfter++] = str[i];
+  }
+  buffer->size = fileSizeAfter;
 }
 
 Buffer ReadFileIntoDoubledSizedBuffer(char* path) {
