@@ -13,7 +13,6 @@ int isRightBufferVisible = 0;
 HWND mainWindow;
 int isRunning = 1;
 int isFullscreen = 0;
-
 // u32 colorsBg = 0x0F1419;
 u32 colorsBg = 0x121212;
 u32 colorsFont = 0xE6E1CF; // 0xCCCCCC;
@@ -38,6 +37,9 @@ float scrollbarWidth = 10;
 Rect leftRect;
 Spring leftOffset;
 
+Rect compilationRect;
+Spring compilationOffset;
+
 Rect middleRect;
 Spring middleOffset;
 
@@ -57,12 +59,13 @@ char* leftFilePath = ".\\misc\\tasks.txt";
 Buffer middleBuffer;
 char* middleFilePath = ".\\main.c";
 
+Buffer compilationOutputBuffer;
 Buffer rightBuffer;
 
-char* allFiles[] = {"main.c",   "font.c", "anim.c",  "math.c",
-                    "search.c", "vim.c",  "win32.c", "misc\\tasks.txt", "misc\\build.bat"};
+char* allFiles[] = {"main.c", "font.c",  "anim.c",          "math.c",         "search.c",
+                    "vim.c",  "win32.c", "misc\\tasks.txt", "misc\\build.bat"};
 
-typedef enum EdFile { Left, Middle, Right } EdFile;
+typedef enum EdFile { Left, Middle, CompilationResults, Right } EdFile;
 
 Buffer* selectedBuffer;
 Spring* selectedOffset;
@@ -266,8 +269,11 @@ void OnLayout() {
   footerRect.height = footerHeight;
   footerRect.y = screen.height - footerRect.height;
 
-  leftRect.width = 70 * font.charWidth;
-  leftRect.height = canvas.height - footerRect.height;
+  compilationRect.width = leftRect.width = 70 * font.charWidth;
+  compilationRect.height = 800;
+
+  leftRect.height = canvas.height - compilationRect.height - footerRect.height;
+  compilationRect.y = leftRect.height;
 
   i32 codeWidth = (screen.width - leftRect.width) / 2;
   middleRect.x = leftRect.width;
@@ -420,11 +426,12 @@ void Parse() {
   int isStartOfLine = 1;
   int line = 0;
   int errorCount = 0;
-  for (int i = 0; i < rightBuffer.size; i++) {
-    char ch = rightBuffer.content[i];
+  Buffer* buf = &compilationOutputBuffer;
+  for (int i = 0; i < buf->size; i++) {
+    char ch = buf->content[i];
     if (isStartOfLine) {
       Res r = {0};
-      if (TryParse(rightBuffer.content + i, &r))
+      if (TryParse(buf->content + i, &r))
         res[errorCount++] = r;
 
       isStartOfLine = 0;
@@ -478,8 +485,7 @@ void RunCode() {
   char output[KB(20)];
   RunCommand(cmd, output, &len);
   if (len > 0) {
-    CopyStrIntoBuffer(&rightBuffer, output, len);
-    isRightBufferVisible = 1;
+    CopyStrIntoBuffer(&compilationOutputBuffer, output, len);
     OnLayout();
     Parse();
   }
@@ -959,6 +965,10 @@ void RectFillRightBorder(Rect r, i32 width, u32 color) {
   PaintRect(r.x + r.width - width / 2, r.y, width, r.height, color);
 }
 
+void RectFillTopBorder(Rect r, i32 height, u32 color) {
+  PaintRect(r.x, r.y - height / 2, r.width, height, color);
+}
+
 void DrawFooter() {
   RectFill(footerRect, colorsFooter);
 
@@ -1190,11 +1200,12 @@ void Draw() {
   u32 borderColor = 0x222222;
   RectFillRightBorder(leftRect, 4, borderColor);
   RectFillRightBorder(middleRect, 4, borderColor);
-  RectFillRightBorder(rightRect, 4, borderColor);
+  RectFillRightBorder(compilationRect, 4, borderColor);
+  RectFillTopBorder(compilationRect, 4, borderColor);
 
   DrawArea(leftRect, &leftBuffer, &leftOffset, Left);
   DrawArea(middleRect, &middleBuffer, &middleOffset, Middle);
-  DrawArea(rightRect, &rightBuffer, &rightOffset, Right);
+  DrawArea(compilationRect, &compilationOutputBuffer, &compilationOffset, CompilationResults);
 
   DrawFooter();
 
@@ -1228,8 +1239,8 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
   InitChangeArena(&middleBuffer);
   //
   // rightBuffer = ReadFileIntoDoubledSizedBuffer(rightFilePath);
-  rightBuffer.content = VirtualAllocateMemory(KB(500));
-  rightBuffer.capacity = KB(500);
+  compilationOutputBuffer.capacity = KB(500);
+  compilationOutputBuffer.content = VirtualAllocateMemory(compilationOutputBuffer.capacity);
 
   SelectFile(Middle);
 
