@@ -94,7 +94,15 @@ void SelectFile(EdFile file) {
   }
 }
 
-typedef enum Mode { Normal, Insert, Visual, VisualLine, FileSelection, LocalSearchTyping } Mode;
+typedef enum Mode {
+  Normal,
+  Insert,
+  ReplaceChar,
+  Visual,
+  VisualLine,
+  FileSelection,
+  LocalSearchTyping
+} Mode;
 f32 appTimeMs = 0;
 Mode mode = Normal;
 
@@ -617,6 +625,8 @@ void AppendCharIntoCommand(char ch) {
         memmove(currentCommand, lastCommand, lastCommandLen);
         currentCommandLen = lastCommandLen;
       }
+      if (IsCommand("r"))
+        mode = ReplaceChar;
       if (IsCommand("dl") || IsCommand("dd")) {
         int from = FindLineStart(selectedBuffer, selectedBuffer->cursor);
         int to = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
@@ -866,6 +876,9 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
       } else if (mode == LocalSearchTyping) {
         searchTerm[searchLen++] = wParam;
         StartSearch();
+      } else if (mode == ReplaceChar) {
+        selectedBuffer->content[selectedBuffer->cursor] = ch;
+        mode = Normal;
       } else
         AppendCharIntoCommand(ch);
     }
