@@ -28,7 +28,18 @@ Week 4
      - Nice looking tree in github when creating PR. Consider this for file explorer 
      - <C-W> <C-U> in insert mode
      - Think about better structure. mainly deps main.c <-> vim.c
- 
+     - Implement . (repeat last command)
+     - Remember position, offset when switching to another buffer
+     - Folds
+
+  Tueday
+    - finish f t . (postponing F T ; ,)
+    - add motions to d c y 
+    p implement r
+    p think about how to ignore unrecognized commands
+    p c-w c-u in insert mode
+    p jump to matching pair ( { [ ' " ` 
+    
   Monday
     - Make p P behave like in vim
     - Show right buffer again

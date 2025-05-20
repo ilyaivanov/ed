@@ -32,6 +32,9 @@ typedef struct Buffer {
   ChangeArena changeArena;
 } Buffer;
 
+char lastCommand[200];
+int lastCommandLen;
+
 void InitChangeArena(Buffer* buffer) {
   buffer->changeArena.contents = VirtualAllocateMemory(KB(40));
   buffer->changeArena.capacity = KB(40);
@@ -73,6 +76,15 @@ i32 FindLineStart(Buffer* buffer, i32 pos) {
     pos--;
 
   return pos;
+}
+
+i32 FindNextChar(Buffer* buffer, i32 from, char ch) {
+  while (from < buffer->size) {
+    if (buffer->content[from] == ch)
+      return from;
+    from++;
+  }
+  return -1;
 }
 
 i32 FindLineEnd(Buffer* buffer, i32 pos) {
@@ -419,11 +431,10 @@ i32 JumpParagraphUp(Buffer* buffer) {
 
 void BreakLineAtCursor(Buffer* buffer) {
   int offset = GetLineOffset(buffer, FindLineStart(buffer, buffer->cursor));
-  
-  InsertCharAtCursor(buffer, '\n');
-  for(int i = 0; i < offset; i++)
-  InsertCharAtCursor(buffer, ' ');
 
+  InsertCharAtCursor(buffer, '\n');
+  for (int i = 0; i < offset; i++)
+    InsertCharAtCursor(buffer, ' ');
 }
 
 // TODO: this could be optimized, no need to traverse whole file for each selection line
@@ -440,6 +451,6 @@ i32 GetLineLength(Buffer* text, i32 line) {
     } else {
       currentLineLength++;
     }
- }
+  }
   return currentLineLength;
 }

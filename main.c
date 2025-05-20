@@ -156,6 +156,8 @@ i32 GetPageHeight(Buffer* buffer) {
 }
 
 void SetCursorPosition(i32 v) {
+  if (v < 0)
+    return;
   selectedBuffer->cursor = Clampi32(v, 0, selectedBuffer->size - 1);
   CursorPos cursor = GetCursorPosition(selectedBuffer);
 
@@ -521,6 +523,11 @@ void ClearCommand() {
   currentCommandLen = 0;
 }
 
+void SaveCommand() {
+  memmove(lastCommand, currentCommand, currentCommandLen);
+  lastCommandLen = currentCommandLen;
+
+}
 void AppendCharIntoCommand(char ch) {
   if (ch == ' ')
     ch = '_';
@@ -560,6 +567,18 @@ void AppendCharIntoCommand(char ch) {
     if (IsCommand("W"))
       SetCursorPosition(JumpWordWithPunctuationForward(selectedBuffer));
 
+    if (currentCommandLen == 2 && currentCommand[0] == 'f') {
+      SetCursorPosition(
+          FindNextChar(selectedBuffer, selectedBuffer->cursor + 1, currentCommand[1]));
+      hasMatchedAnyCommand = 1;
+    }
+
+    if (currentCommandLen == 2 && currentCommand[0] == 't') {
+      SetCursorPosition(
+          FindNextChar(selectedBuffer, selectedBuffer->cursor + 1, currentCommand[1]) - 1);
+      hasMatchedAnyCommand = 1;
+    }
+
     if (IsCommand("B"))
       SetCursorPosition(JumpWordWithPunctuationBackward(selectedBuffer));
 
@@ -594,8 +613,11 @@ void AppendCharIntoCommand(char ch) {
         // mode = Normal;
       }
     } else if (mode == Normal) {
+      if (currentCommand[0] == '.') {
+        memmove(currentCommand, lastCommand, lastCommandLen);
+        currentCommandLen = lastCommandLen;
+      }
       if (IsCommand("dl") || IsCommand("dd")) {
-
         int from = FindLineStart(selectedBuffer, selectedBuffer->cursor);
         int to = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
         RemoveChars(selectedBuffer, from, to);
@@ -607,188 +629,224 @@ void AppendCharIntoCommand(char ch) {
         int from = selectedBuffer->cursor;
         int to = JumpWordWithPunctuationForward(selectedBuffer) - 1;
         RemoveChars(selectedBuffer, from, to);
+        SaveCommand();
       }
       if (IsCommand("dw")) {
         int from = selectedBuffer->cursor;
         int lineEnd = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
         int to = MinI32(JumpWordForward(selectedBuffer) - 1, lineEnd - 1);
         RemoveChars(selectedBuffer, from, to);
-      }
-      if (IsCommand("O")) {
-        i32 lineStart = FindLineStart(selectedBuffer, selectedBuffer->cursor);
-        i32 offset = GetLineOffset(selectedBuffer, lineStart);
-
-        InsertCharAt(selectedBuffer, lineStart, '\n');
-        for (int i = 0; i < offset; i++)
-          InsertCharAt(selectedBuffer, lineStart + i, ' ');
-
-        selectedBuffer->cursor = lineStart + offset;
-        mode = Insert;
-      }
-      if (IsCommand("o")) {
-        i32 lineEnd = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
-        i32 offset =
-            GetLineOffset(selectedBuffer, FindLineStart(selectedBuffer, selectedBuffer->cursor));
-
-        InsertCharAt(selectedBuffer, lineEnd, '\n');
-        for (int i = 0; i < offset; i++)
-          InsertCharAt(selectedBuffer, lineEnd + 1 + i, ' ');
-
-        selectedBuffer->cursor = lineEnd + 1 + offset;
-        mode = Insert;
-      }
-      if (IsCommand("v")) {
-        mode = Visual;
-        selectedBuffer->selectionStart = selectedBuffer->cursor;
-      }
-      if (IsCommand("V")) {
-        mode = VisualLine;
-        selectedBuffer->selectionStart = selectedBuffer->cursor;
-      }
-      if (IsCommand("I")) {
-        selectedBuffer->cursor = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
-        mode = Insert;
-      }
-      if (IsCommand("i")) {
-        mode = Insert;
-      }
-      if (IsCommand("a")) {
-        selectedBuffer->cursor = MaxI32(selectedBuffer->cursor - 1, 0);
-        mode = Insert;
-      }
-      if (IsCommand("A")) {
-        selectedBuffer->cursor = FindLineStart(selectedBuffer, selectedBuffer->cursor);
-        while (selectedBuffer->cursor < selectedBuffer->size &&
-               IsWhitespace(selectedBuffer->content[selectedBuffer->cursor]))
-          selectedBuffer->cursor++;
-
-        mode = Insert;
-      }
-      if (IsCommand("C")) {
-        i32 start = FindLineStart(selectedBuffer, selectedBuffer->cursor);
-        i32 end = FindLineEnd(selectedBuffer, selectedBuffer->cursor) - 1;
-        if (start != end) {
-          RemoveChars(selectedBuffer, selectedBuffer->cursor, end);
-        }
-        mode = Insert;
-      }
-      if (IsCommand("D")) {
-        i32 start = FindLineStart(selectedBuffer, selectedBuffer->cursor);
-        i32 end = FindLineEnd(selectedBuffer, selectedBuffer->cursor) - 1;
-        if (start != end) {
-          RemoveChars(selectedBuffer, selectedBuffer->cursor, end);
-          selectedBuffer->cursor -= 1;
-        }
+        SaveCommand();
       }
 
-      if (IsCommand("x")) {
-        if (selectedBuffer->cursor < selectedBuffer->size - 1)
-          RemoveChar(selectedBuffer, selectedBuffer->cursor);
-      }
-      if (IsCommand("yy") || IsCommand("yl")) {
-        i32 start = FindLineStart(selectedBuffer, selectedBuffer->cursor);
-        i32 end = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
-        ClipboardCopy(mainWindow, selectedBuffer->content + start, end - start + 1);
-      }
-      if (IsCommand("p")) {
-        i32 size = 0;
-        char* textFromClipboard = ClipboardPaste(mainWindow, &size);
+      // TODO: these are starting to look like patterns for operation/motion common code
+      if (currentCommandLen > 2) {
+        char op = currentCommand[0];
+        char motion = currentCommand[1];
 
-        int whereToInsert = selectedBuffer->cursor + 1;
-        int isInsertingNewLine = StrContainsChar(textFromClipboard, '\n');
-        if (isInsertingNewLine)
-          whereToInsert = FindLineEnd(selectedBuffer, selectedBuffer->cursor) + 1;
+        int isValidOp = (op == 'd' || op == 'c' || op == 'y');
+        int isValidMotion = motion == 'f' || motion == 't';
 
-        InsertChars(selectedBuffer, textFromClipboard, size, whereToInsert);
-        if (isInsertingNewLine)
-          selectedBuffer->cursor = whereToInsert;
-        else
-          selectedBuffer->cursor = whereToInsert + size;
+        if (!hasMatchedAnyCommand && currentCommandLen == 3 && isValidOp && isValidMotion) {
+          char ch = currentCommand[2];
+          int from = selectedBuffer->cursor;
+          int to = 0;
+          if (motion == 'f')
+            to = FindNextChar(selectedBuffer, selectedBuffer->cursor + 1, ch);
 
-        if (textFromClipboard)
-          VirtualFreeMemory(textFromClipboard);
-      }
+          if (motion == 't')
+            to = FindNextChar(selectedBuffer, selectedBuffer->cursor + 1, ch) - 1;
 
-      if (IsCommand("P")) {
-        i32 size = 0;
-        char* textFromClipboard = ClipboardPaste(mainWindow, &size);
+          if (op == 'd')
+            RemoveChars(selectedBuffer, from, to);
+          if (op == 'c') {
+            RemoveChars(selectedBuffer, from, to);
+            mode = Insert;
+          }
+          if (op == 'y')
+            ClipboardCopy(mainWindow, selectedBuffer->content + from, to - from + 1);
 
-        int whereToInsert = selectedBuffer->cursor;
-        int isInsertingNewLine = StrContainsChar(textFromClipboard, '\n');
-        if (isInsertingNewLine)
-          whereToInsert = FindLineStart(selectedBuffer, selectedBuffer->cursor);
-
-        InsertChars(selectedBuffer, textFromClipboard, size, whereToInsert);
-
-        if (isInsertingNewLine)
-          selectedBuffer->cursor = whereToInsert;
-        else
-          selectedBuffer->cursor = whereToInsert + size;
-
-        if (textFromClipboard)
-          VirtualFreeMemory(textFromClipboard);
-      }
-      if (IsCommand("zz"))
-        CenterViewOnCursor();
-
-      if (IsCommand("_r"))
-        RunCode();
-
-      if (currentCommandLen == 2 && currentCommand[0] == 'e') {
-        if (currentCommand[1] >= '0' && currentCommand[1] <= '9') {
-          NavigateToError(currentCommand[1] - '1');
+          SaveCommand();
           hasMatchedAnyCommand = 1;
         }
       }
+    }
 
-      if (IsCommand("_e"))
-        mode = FileSelection;
+    if (IsCommand("O")) {
+      i32 lineStart = FindLineStart(selectedBuffer, selectedBuffer->cursor);
+      i32 offset = GetLineOffset(selectedBuffer, lineStart);
 
-      if (IsCommand("_f"))
-        FormatSelectedFile();
+      InsertCharAt(selectedBuffer, lineStart, '\n');
+      for (int i = 0; i < offset; i++)
+        InsertCharAt(selectedBuffer, lineStart + i, ' ');
 
-      if (IsCommand("_w"))
-        SaveSelectedFile();
+      selectedBuffer->cursor = lineStart + offset;
+      mode = Insert;
+    }
+    if (IsCommand("o")) {
+      i32 lineEnd = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
+      i32 offset =
+          GetLineOffset(selectedBuffer, FindLineStart(selectedBuffer, selectedBuffer->cursor));
 
-      if (IsCommand("u")) {
-        i32 currentCursor = selectedBuffer->cursor;
-        Change* appliedChange = UndoLastChange(selectedBuffer);
-        if (appliedChange && appliedChange->type != Replaced)
-          SetCursorPosition(appliedChange->at);
+      InsertCharAt(selectedBuffer, lineEnd, '\n');
+      for (int i = 0; i < offset; i++)
+        InsertCharAt(selectedBuffer, lineEnd + 1 + i, ' ');
+
+      selectedBuffer->cursor = lineEnd + 1 + offset;
+      mode = Insert;
+    }
+    if (IsCommand("v")) {
+      mode = Visual;
+      selectedBuffer->selectionStart = selectedBuffer->cursor;
+    }
+    if (IsCommand("V")) {
+      mode = VisualLine;
+      selectedBuffer->selectionStart = selectedBuffer->cursor;
+    }
+    if (IsCommand("I")) {
+      selectedBuffer->cursor = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
+      mode = Insert;
+    }
+    if (IsCommand("i")) {
+      mode = Insert;
+    }
+    if (IsCommand("a")) {
+      selectedBuffer->cursor = MaxI32(selectedBuffer->cursor - 1, 0);
+      mode = Insert;
+    }
+    if (IsCommand("A")) {
+      selectedBuffer->cursor = FindLineStart(selectedBuffer, selectedBuffer->cursor);
+      while (selectedBuffer->cursor < selectedBuffer->size &&
+             IsWhitespace(selectedBuffer->content[selectedBuffer->cursor]))
+        selectedBuffer->cursor++;
+
+      mode = Insert;
+    }
+    if (IsCommand("C")) {
+      i32 start = FindLineStart(selectedBuffer, selectedBuffer->cursor);
+      i32 end = FindLineEnd(selectedBuffer, selectedBuffer->cursor) - 1;
+      if (start != end) {
+        RemoveChars(selectedBuffer, selectedBuffer->cursor, end);
       }
-
-      if (IsCommand("_n")) {
-        isSearchVisible = 0;
-      }
-      if (IsCommand("n")) {
-        if (!isSearchVisible) {
-          isSearchVisible = 1;
-          StartSearch();
-        } else {
-          MoveNextOnSearch();
-        }
-      }
-
-      if (IsCommand("N")) {
-        currentEntry--;
-        if (currentEntry < 0)
-          currentEntry = entriesCount - 1;
-        SetCursorPosition(entriesAt[currentEntry].at);
-      }
-      if (IsCommand("/")) {
-        mode = LocalSearchTyping;
-
-        isSearchVisible = 1;
-      }
-
-      if (IsCommand("tt")) {
-        PostQuitMessage(0);
-        isRunning = 0;
+      mode = Insert;
+    }
+    if (IsCommand("D")) {
+      i32 start = FindLineStart(selectedBuffer, selectedBuffer->cursor);
+      i32 end = FindLineEnd(selectedBuffer, selectedBuffer->cursor) - 1;
+      if (start != end) {
+        RemoveChars(selectedBuffer, selectedBuffer->cursor, end);
+        selectedBuffer->cursor -= 1;
       }
     }
+
+    if (IsCommand("x")) {
+      if (selectedBuffer->cursor < selectedBuffer->size - 1)
+        RemoveChar(selectedBuffer, selectedBuffer->cursor);
+    }
+    if (IsCommand("yy") || IsCommand("yl")) {
+      i32 start = FindLineStart(selectedBuffer, selectedBuffer->cursor);
+      i32 end = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
+      ClipboardCopy(mainWindow, selectedBuffer->content + start, end - start + 1);
+    }
+    if (IsCommand("p")) {
+      i32 size = 0;
+      char* textFromClipboard = ClipboardPaste(mainWindow, &size);
+
+      int whereToInsert = selectedBuffer->cursor + 1;
+      int isInsertingNewLine = StrContainsChar(textFromClipboard, '\n');
+      if (isInsertingNewLine)
+        whereToInsert = FindLineEnd(selectedBuffer, selectedBuffer->cursor) + 1;
+
+      InsertChars(selectedBuffer, textFromClipboard, size, whereToInsert);
+      if (isInsertingNewLine)
+        selectedBuffer->cursor = whereToInsert;
+      else
+        selectedBuffer->cursor = whereToInsert + size;
+
+      if (textFromClipboard)
+        VirtualFreeMemory(textFromClipboard);
+    }
+
+    if (IsCommand("P")) {
+      i32 size = 0;
+      char* textFromClipboard = ClipboardPaste(mainWindow, &size);
+
+      int whereToInsert = selectedBuffer->cursor;
+      int isInsertingNewLine = StrContainsChar(textFromClipboard, '\n');
+      if (isInsertingNewLine)
+        whereToInsert = FindLineStart(selectedBuffer, selectedBuffer->cursor);
+
+      InsertChars(selectedBuffer, textFromClipboard, size, whereToInsert);
+
+      if (isInsertingNewLine)
+        selectedBuffer->cursor = whereToInsert;
+      else
+        selectedBuffer->cursor = whereToInsert + size;
+
+      if (textFromClipboard)
+        VirtualFreeMemory(textFromClipboard);
+    }
+    if (IsCommand("zz"))
+      CenterViewOnCursor();
+
+    if (IsCommand("_r"))
+      RunCode();
+
+    if (currentCommandLen == 2 && currentCommand[0] == 'e') {
+      if (currentCommand[1] >= '0' && currentCommand[1] <= '9') {
+        NavigateToError(currentCommand[1] - '1');
+        hasMatchedAnyCommand = 1;
+      }
+    }
+
+    if (IsCommand("_e"))
+      mode = FileSelection;
+
+    if (IsCommand("_f"))
+      FormatSelectedFile();
+
+    if (IsCommand("_w"))
+      SaveSelectedFile();
+
+    if (IsCommand("u")) {
+      i32 currentCursor = selectedBuffer->cursor;
+      Change* appliedChange = UndoLastChange(selectedBuffer);
+      if (appliedChange && appliedChange->type != Replaced)
+        SetCursorPosition(appliedChange->at);
+    }
+
+    if (IsCommand("_n")) {
+      isSearchVisible = 0;
+    }
+    if (IsCommand("n")) {
+      if (!isSearchVisible) {
+        isSearchVisible = 1;
+        StartSearch();
+      } else {
+        MoveNextOnSearch();
+      }
+    }
+
+    if (IsCommand("N")) {
+      currentEntry--;
+      if (currentEntry < 0)
+        currentEntry = entriesCount - 1;
+      SetCursorPosition(entriesAt[currentEntry].at);
+    }
+    if (IsCommand("/")) {
+      mode = LocalSearchTyping;
+
+      isSearchVisible = 1;
+    }
+
+    if (IsCommand("_q")) {
+      PostQuitMessage(0);
+      isRunning = 0;
+    }
   }
-  if (hasMatchedAnyCommand)
+  if (hasMatchedAnyCommand) {
     ClearCommand();
+  }
 }
 
 LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
