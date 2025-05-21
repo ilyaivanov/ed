@@ -455,16 +455,6 @@ void Parse() {
   }
 }
 
-int IsStrEqual(char* s1, char* s2) {
-  while (*s1 && *s2) {
-    if (*s1 != *s2)
-      return 0;
-    s1++;
-    s2++;
-  }
-  return *s1 == *s2;
-}
-
 void NavigateToError(int pos) {
   Res r = res[pos];
   char fullPath[256] = {0};
@@ -534,7 +524,6 @@ void ClearCommand() {
 void SaveCommand() {
   memmove(lastCommand, currentCommand, currentCommandLen);
   lastCommandLen = currentCommandLen;
-
 }
 void AppendCharIntoCommand(char ch) {
   if (ch == ' ')
@@ -1222,21 +1211,54 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset, EdFile file) {
   x = startX;
   y = rect.y + startY;
 
+  u32 colorKeyword = 0x359ED2;
+  u32 colorCode = 0xA0DAFB;
+  u32 colorPreprocessor = 0xC686BD;
+  u32 colorType = 0x46C8B1;
+  u32 colorComment = 0x666666;
+  u32 colorString = 0xCC937B;
+  int isTokenized = strlen(buffer->filePath) > 0 && StrEndsWith(buffer->filePath, ".c");
+  if (isTokenized)
+    SplitIntoTokens(buffer);
+  else
+    tokensCount = 0;
+    
+  int currentToken = 0;
+
   for (i32 i = 0; i < buffer->size; i++) {
     i32 charY = y + charShift;
     char ch = buffer->content[i];
+    Token* t =
+        (currentToken < tokensCount && tokens[currentToken].start <= i) ? &tokens[currentToken] : 0;
+    u32 color = colorsFont;
+    if (t && t->type == Preprocessor)
+      color = colorPreprocessor;
+    if (t && t->type == Keyword)
+      color = colorKeyword;
+    if (t && t->type == Type)
+      color = colorType;
+    if (t && t->type == Comment)
+      color = colorComment;
+    if (t && (t->type == StringLiteral || t->type == CharLiteral))
+      color = colorString;
+
     if (ch == '\n') {
       x = startX;
       y += lineHeightPx;
     } else if (ch < MAX_CHAR_CODE && ch >= ' ') {
-      u32 charColor = (i == buffer->cursor && hasCursor) ? colorsBg : colorsFont;
+
+      u32 charColor = (i == buffer->cursor && hasCursor) ? colorsBg : color;
       CopyMonochromeTextureRectTo(&canvas, &rect, &font.textures[ch], x, charY, charColor);
       x += font.charWidth;
     } else {
       PaintRect(x, charY, font.charWidth, lineHeightPx, 0xff0000);
       x += font.charWidth;
     }
+
+    if (t && i >= (t->start + t->len - 1))
+      currentToken++;
   }
+  
   if (mode == FileSelection && buffer == selectedBuffer) {
     i32 fileBoxWidth = 400;
     int boxX = rect.x + rect.width / 2 - fileBoxWidth / 2;
@@ -1325,6 +1347,7 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
 
   InitAnimations();
 
+  tokens = VirtualAllocateMemory(sizeof(Token) * 20000000);
   // InitChanges(selectedBuffer, &changeArena);
   i64 startCounter = GetPerfCounter();
   while (isRunning) {

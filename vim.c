@@ -1,4 +1,5 @@
 #pragma once
+#include <string.h>
 
 typedef enum ChangeType { Added, Removed, Replaced } ChangeType;
 
@@ -32,7 +33,13 @@ typedef struct Buffer {
   ChangeArena changeArena;
 } Buffer;
 
-char lastCommand[200];
+typedef struct str {
+  int size;
+  int capacity;
+  char content[];
+} str;
+
+char lastCommand[KB(2 * 1024)];
 int lastCommandLen;
 
 void InitChangeArena(Buffer* buffer) {
@@ -69,6 +76,25 @@ int StrContainsChar(char* str, char ch) {
     str++;
   }
   return *str == ch;
+}
+
+int IsStrEqual(char* s1, char* s2) {
+  while (*s1 && *s2) {
+    if (*s1 != *s2)
+      return 0;
+    s1++;
+    s2++;
+  }
+  return *s1 == *s2;
+}
+
+int StrEndsWith(char* str, char* seq) {
+  int len = strlen(str);
+  int seqLen = strlen(seq);
+  if (seqLen > len)
+    return -1;
+  char* end = str + len - seqLen;
+  return IsStrEqual(end, seq);
 }
 
 i32 FindLineStart(Buffer* buffer, i32 pos) {
@@ -453,4 +479,143 @@ i32 GetLineLength(Buffer* text, i32 line) {
     }
   }
   return currentLineLength;
+}
+
+//
+// Primitive tokenizer for C
+//
+//
+typedef enum AppTokenType {
+  Text,
+  Preprocessor,
+  Type,
+  Keyword,
+  Comment,
+  StringLiteral,
+  CharLiteral
+} AppTokenType;
+
+typedef struct Token {
+  int start;
+  int len;
+  AppTokenType type;
+} Token;
+
+Token* tokens;
+int tokensCount;
+
+int IsKeyword(const char* str, int len) {
+  const char* keywords[] = {"for",  "if",    "else",   "typedef", "struct",
+                            "enum", "while", "return", "const",   "sizeof"};
+  for (int i = 0; i < sizeof(keywords) / sizeof(*keywords); i++) {
+    if (strncmp(str, keywords[i], len) == 0 && keywords[i][len] == '\0') {
+      return 1;
+    }
+  }
+  return 0;
+}
+
+int IsType(const char* str, int len) {
+  const char* types[] = {"int",    "void",       "float",  "char",        "i32",   "u8",  "Rect",
+                         "Spring", "ChangeType", "str",    "EdFile",      "HWND",  "MSG", "u32",
+                         "i64",    "u64",        "Buffer", "ChangeArena", "Change"};
+  for (int i = 0; i < ArrayLength(types); i++) {
+    if (strncmp(str, types[i], len) == 0 && types[i][len] == '\0') {
+      return 1;
+    }
+  }
+  return 0;
+}
+
+int IsPreprocessor(const char* str, int len) {
+  const char* pre[] = {"#define", "#include", "#pragma"};
+  for (int i = 0; i < sizeof(pre) / sizeof(*pre); i++) {
+    if (strncmp(str, pre[i], len) == 0 && pre[i][len] == '\0') {
+      return 1;
+    }
+  }
+  return 0;
+}
+
+void SplitIntoTokens(Buffer* buffer) {
+  tokensCount = 0;
+  int i = 0;
+  char* src = buffer->content;
+  int size = buffer->size;
+
+  while (i < size) {
+    // Skip whitespace
+    while (i < size && isspace(src[i]))
+      i++;
+
+    if (i >= size)
+      break;
+
+    if (src[i] == '/' && src[i + 1] == '/') {
+      int commentStart = i;
+      while (src[i] != '\n')
+        i++;
+      tokens[tokensCount++] =
+          (Token){.start = commentStart, .len = i - commentStart, .type = Comment};
+
+      i++;
+    } else if (src[i] == '\'') {
+      int commentStart = i;
+      i++;
+
+      while (i < size && src[i] != '\n') {
+        if (src[i] == '\'' && src[i - 1] != '\\')
+          break;
+        i++;
+      }
+
+      tokens[tokensCount++] =
+          (Token){.start = commentStart, .len = i - commentStart + 1, .type = CharLiteral};
+
+      i++;
+    } else if (src[i] == '"') {
+      int commentStart = i;
+      i++;
+
+      while (i < size && src[i] != '\n') {
+        if (src[i] == '\"' && src[i - 1] != '\\')
+          break;
+        i++;
+      }
+      tokens[tokensCount++] =
+          (Token){.start = commentStart, .len = i - commentStart + 1, .type = StringLiteral};
+
+      i++;
+    } else {
+      int start = i;
+
+      // Simple word token: letters, digits, #, _
+      while (i < size && (isalnum(src[i]) || src[i] == '_' || src[i] == '#')) {
+        i++;
+      }
+
+      int len = i - start;
+      if (len > 0) {
+        AppTokenType type = Text;
+        if (IsPreprocessor(&src[start], len))
+          type = Preprocessor;
+        else if (IsKeyword(&src[start], len))
+          type = Keyword;
+        else if (IsType(&src[start], len))
+          type = Type;
+
+        if (type == Type && i < size && src[i] == '*') {
+          i++;
+          len++;
+        }
+
+        tokens[tokensCount++] = (Token){.start = start, .len = len, .type = type};
+      } else {
+        tokens[tokensCount++] = (Token){.start = start, .len = len, .type = Text};
+        i++;
+      }
+    }
+
+    // You can extend here to handle punctuation tokens (e.g. '(', ';', etc.)
+  }
 }

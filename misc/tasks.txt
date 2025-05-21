@@ -9,36 +9,56 @@ OverallProgress
   Folds
   Folder Explorer
 
+Things to play around
+    - Syntax highlight
+    - Run app in the editor (with logs, crash reports)
+    - Folds
 
 
 
 Timeline
 Week 4
   Plan
-     - Enter in norma\insert modes should respect line offsets as O o
+     y Enter in norma\insert modes should respect line offsets as O o
      - Tab and shift-tab should add\remove tabsize spaces both normal and insert modes
-     - Split these notes into two vertical splits with compilation erros
+     y Split these notes into two vertical splits with compilation erros
+     - COnsider removing backspace and use only c-w c-b c-u
+     - MAke sure your hands rest on the HOME
      - Highlight keywords and hardcoded types
      - Highlight comments and strings
      - Integrate ctags with go to definition
-     - Make p P behave like in vim
-     - Implement F f T t motions
+     y Make p P behave like in vim
+     y Implement F f T t motions
      - Start working on text objects
      - Text wrap modes: no, word-break, char-break
      - Nice looking tree in github when creating PR. Consider this for file explorer 
      - <C-W> <C-U> in insert mode
      - Think about better structure. mainly deps main.c <-> vim.c
-     - Implement . (repeat last command)
+     p Implement . (repeat last command)
      - Remember position, offset when switching to another buffer
-     - Folds
+     - gf go to file
+     - gv reselect
+     - search by word, meaning search separate token, not just substring
+     - % to jump to matching char. Highlight matching char when focused
+     - show relative line numbers
+     - forbid improper capitalization (R with left shift)
+          with animation feedback
 
+
+  Wednesday 
+    - Finishing simple tokenizer
+       - types hardcoded, keywords, preprop, strings, comments
+    - 
+    
+    
+    
   Tueday
     - finish f t . (postponing F T ; ,)
     - add motions to d c y 
-    p implement r
-    p think about how to ignore unrecognized commands
+    - implement r
     p c-w c-u in insert mode
     p jump to matching pair ( { [ ' " ` 
+    p think about how to ignore unrecognized commands
     
   Monday
     - Make p P behave like in vim
