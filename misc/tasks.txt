@@ -24,6 +24,7 @@ Week 4
      y Split these notes into two vertical splits with compilation erros
      - COnsider removing backspace and use only c-w c-b c-u
      - MAke sure your hands rest on the HOME
+     - Bug: replace char doesn't mark doc as not saved
      - Highlight keywords and hardcoded types
      - Highlight comments and strings
      - Integrate ctags with go to definition
@@ -48,7 +49,7 @@ Week 4
   Wednesday 
     - Finishing simple tokenizer
        - types hardcoded, keywords, preprop, strings, comments
-    - 
+    - Moving towards a single pipeline for commands
     
     
     

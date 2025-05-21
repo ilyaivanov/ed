@@ -521,14 +521,14 @@ void ClearCommand() {
   currentCommandLen = 0;
 }
 
+int isPlayingLastRepeat = 0;
 void SaveCommand() {
-  memmove(lastCommand, currentCommand, currentCommandLen);
-  lastCommandLen = currentCommandLen;
+  if (!isPlayingLastRepeat) {
+    memmove(lastCommand, currentCommand, currentCommandLen);
+    lastCommandLen = currentCommandLen;
+  }
 }
 void AppendCharIntoCommand(char ch) {
-  if (ch == ' ')
-    ch = '_';
-
   currentCommand[currentCommandLen++] = ch;
   visibleCommandLen = 0;
   hasMatchedAnyCommand = 0;
@@ -541,6 +541,22 @@ void AppendCharIntoCommand(char ch) {
       sprintf(path, "%s%s", rootDir, allFiles[firstChar - '1']);
       LoadFileIntoSelectedBuffer(path);
       hasMatchedAnyCommand = 1;
+    }
+  } else if (mode == Insert) {
+    if (ch == VK_ESCAPE) {
+      mode = Normal;
+
+      hasMatchedAnyCommand = 1;
+      if (!isPlayingLastRepeat)
+        lastCommand[lastCommandLen++] = ch;
+    } else if (ch < MAX_CHAR_CODE && ch >= ' ') {
+      InsertCharAtCursor(selectedBuffer, ch);
+
+      hasMatchedAnyCommand = 1;
+      if (!isPlayingLastRepeat)
+        lastCommand[lastCommandLen++] = ch;
+      if (isSearchVisible)
+        FindEntries(selectedBuffer);
     }
   } else {
     if (IsCommand("j"))
@@ -610,10 +626,6 @@ void AppendCharIntoCommand(char ch) {
         // mode = Normal;
       }
     } else if (mode == Normal) {
-      if (currentCommand[0] == '.') {
-        memmove(currentCommand, lastCommand, lastCommandLen);
-        currentCommandLen = lastCommandLen;
-      }
       if (IsCommand("r"))
         mode = ReplaceChar;
       if (IsCommand("dl") || IsCommand("dd")) {
@@ -636,6 +648,20 @@ void AppendCharIntoCommand(char ch) {
         int to = MinI32(JumpWordForward(selectedBuffer) - 1, lineEnd - 1);
         RemoveChars(selectedBuffer, from, to);
         SaveCommand();
+      }
+      if (IsCommand("cw") || IsCommand("cW")) {
+        int from = selectedBuffer->cursor;
+        int lineEnd = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
+        int to = MinI32(JumpWordForward(selectedBuffer) - 1, lineEnd - 1);
+        if (currentCommand[1] == 'W')
+          to = MinI32(JumpWordWithPunctuationForward(selectedBuffer) - 1, lineEnd - 1);
+
+        if (selectedBuffer->content[to] == ' ')
+          to--;
+        RemoveChars(selectedBuffer, from, to);
+        mode = Insert;
+        SaveCommand();
+        FindEntries(selectedBuffer);
       }
 
       // TODO: these are starting to look like patterns for operation/motion common code
@@ -702,24 +728,27 @@ void AppendCharIntoCommand(char ch) {
       mode = VisualLine;
       selectedBuffer->selectionStart = selectedBuffer->cursor;
     }
-    if (IsCommand("I")) {
+    if (IsCommand("A")) {
       selectedBuffer->cursor = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
       mode = Insert;
     }
     if (IsCommand("i")) {
       mode = Insert;
+      SaveCommand();
     }
     if (IsCommand("a")) {
       selectedBuffer->cursor = MaxI32(selectedBuffer->cursor - 1, 0);
       mode = Insert;
+      SaveCommand();
     }
-    if (IsCommand("A")) {
+    if (IsCommand("I")) {
       selectedBuffer->cursor = FindLineStart(selectedBuffer, selectedBuffer->cursor);
       while (selectedBuffer->cursor < selectedBuffer->size &&
              IsWhitespace(selectedBuffer->content[selectedBuffer->cursor]))
         selectedBuffer->cursor++;
 
       mode = Insert;
+      SaveCommand();
     }
     if (IsCommand("C")) {
       i32 start = FindLineStart(selectedBuffer, selectedBuffer->cursor);
@@ -728,6 +757,7 @@ void AppendCharIntoCommand(char ch) {
         RemoveChars(selectedBuffer, selectedBuffer->cursor, end);
       }
       mode = Insert;
+      SaveCommand();
     }
     if (IsCommand("D")) {
       i32 start = FindLineStart(selectedBuffer, selectedBuffer->cursor);
@@ -788,7 +818,7 @@ void AppendCharIntoCommand(char ch) {
     if (IsCommand("zz"))
       CenterViewOnCursor();
 
-    if (IsCommand("_r"))
+    if (IsCommand(" r"))
       RunCode();
 
     if (currentCommandLen == 2 && currentCommand[0] == 'e') {
@@ -798,13 +828,13 @@ void AppendCharIntoCommand(char ch) {
       }
     }
 
-    if (IsCommand("_e"))
+    if (IsCommand(" e"))
       mode = FileSelection;
 
-    if (IsCommand("_f"))
+    if (IsCommand(" f"))
       FormatSelectedFile();
 
-    if (IsCommand("_w"))
+    if (IsCommand(" w"))
       SaveSelectedFile();
 
     if (IsCommand("u")) {
@@ -814,7 +844,7 @@ void AppendCharIntoCommand(char ch) {
         SetCursorPosition(appliedChange->at);
     }
 
-    if (IsCommand("_n")) {
+    if (IsCommand(" n")) {
       isSearchVisible = 0;
     }
     if (IsCommand("n")) {
@@ -838,7 +868,7 @@ void AppendCharIntoCommand(char ch) {
       isSearchVisible = 1;
     }
 
-    if (IsCommand("_q")) {
+    if (IsCommand(" q")) {
       PostQuitMessage(0);
       isRunning = 0;
     }
@@ -859,9 +889,11 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
   case WM_CHAR:
     char ch = (char)wParam;
     if (ch >= ' ' && ch <= MAX_CHAR_CODE) {
-      if (mode == Insert) {
-        if (ch < MAX_CHAR_CODE && ch >= ' ')
-          InsertCharAtCursor(selectedBuffer, ch);
+      if (mode == Normal && wParam == '.' && currentCommandLen == 0) {
+        isPlayingLastRepeat = 1;
+        for (int i = 0; i < lastCommandLen; i++)
+          AppendCharIntoCommand(lastCommand[i]);
+        isPlayingLastRepeat = 0;
       } else if (mode == LocalSearchTyping) {
         searchTerm[searchLen++] = wParam;
         StartSearch();
@@ -908,14 +940,14 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
       if (wParam == VK_ESCAPE)
         mode = Normal;
     } else if (mode == Insert) {
-      if (wParam == VK_ESCAPE)
-        mode = Normal;
       if (wParam == VK_RETURN)
         BreakLineAtCursor(selectedBuffer);
       else if (wParam == 'B' && IsKeyPressed(VK_CONTROL))
         RemoveCurrentChar();
       else if (wParam == VK_BACK)
         RemoveCurrentChar();
+      else if (wParam == VK_ESCAPE)
+        AppendCharIntoCommand(wParam);
     } else if (mode == Normal) {
       if (wParam == VK_RETURN)
         BreakLineAtCursor(selectedBuffer);
@@ -1056,12 +1088,15 @@ void DrawFooter() {
   char posLabel[512];
 
   CursorPos cursor = GetCursorPosition(selectedBuffer);
-  int chars = sprintf(
-      posLabel,
-      "changes size %d, capacity %d   buffer size %d, capacity %d   pos %d, line %d, offset %d",
-      GetChangeArenaSize(&selectedBuffer->changeArena), selectedBuffer->changeArena.capacity,
-      selectedBuffer->size, selectedBuffer->capacity, selectedBuffer->cursor, cursor.line,
-      cursor.lineOffset);
+  char lastCommandUI[512] = {0};
+  memmove(lastCommandUI, lastCommand, lastCommandLen);
+  int chars =
+      sprintf(posLabel,
+              "%s    changes size %d, capacity %d   buffer size %d, capacity %d   pos %d, line %d, "
+              "offset %d",
+              lastCommandUI, GetChangeArenaSize(&selectedBuffer->changeArena),
+              selectedBuffer->changeArena.capacity, selectedBuffer->size, selectedBuffer->capacity,
+              selectedBuffer->cursor, cursor.line, cursor.lineOffset);
   int width = chars * font.charWidth;
   int posX = screen.width - width - 2 * font.charWidth;
   int posY = footerRect.y + footerPadding;
