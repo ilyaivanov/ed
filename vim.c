@@ -505,8 +505,8 @@ Token* tokens;
 int tokensCount;
 
 int IsKeyword(const char* str, int len) {
-  const char* keywords[] = {"for",  "if",    "else",   "typedef", "struct",
-                            "enum", "while", "return", "const",   "sizeof"};
+  const char* keywords[] = {"for",   "if",   "else", "typedef", "struct", "inline", "switch",
+                            "break", "case", "enum", "while",   "return", "const",  "sizeof"};
   for (int i = 0; i < sizeof(keywords) / sizeof(*keywords); i++) {
     if (strncmp(str, keywords[i], len) == 0 && keywords[i][len] == '\0') {
       return 1;
@@ -516,9 +516,12 @@ int IsKeyword(const char* str, int len) {
 }
 
 int IsType(const char* str, int len) {
-  const char* types[] = {"int",    "void",       "float",  "char",        "i32",   "u8",  "Rect",
-                         "Spring", "ChangeType", "str",    "EdFile",      "HWND",  "MSG", "u32",
-                         "i64",    "u64",        "Buffer", "ChangeArena", "Change"};
+  const char* types[] = {"int",         "void",        "float",      "char",   "i32",
+                         "u8",          "Rect",        "FontData",   "Arena",  "MonochromeTexture",
+                         "BITMAPINFO",  "Spring",      "ChangeType", "str",    "EdFile",
+                         "PAINTSTRUCT", "LRESULT",     "UINT",       "WPARAM", "LPARAM",
+                         "HWND",        "MSG",         "u32",        "i64",    "u64",
+                         "Buffer",      "ChangeArena", "Change"};
   for (int i = 0; i < ArrayLength(types); i++) {
     if (strncmp(str, types[i], len) == 0 && types[i][len] == '\0') {
       return 1;

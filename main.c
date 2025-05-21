@@ -63,8 +63,8 @@ Buffer compilationOutputBuffer;
 Buffer rightBuffer;
 char* rightFilePath = ".\\vim.c";
 
-char* allFiles[] = {"main.c", "font.c",  "anim.c",          "math.c",         "search.c",
-                    "vim.c",  "win32.c", "misc\\tasks.txt", "misc\\build.bat"};
+char* allFiles[] = {"main.c",   "font.c", "anim.c",  "math.c",
+                    "search.c", "vim.c",  "win32.c", "misc\\build.bat"};
 
 typedef enum EdFile { Left, Middle, CompilationResults, Right } EdFile;
 
