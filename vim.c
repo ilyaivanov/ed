@@ -39,7 +39,12 @@ typedef struct str {
   char content[];
 } str;
 
-char lastCommand[KB(2 * 1024)];
+typedef struct Key {
+  int ctrl;
+  char ch;
+} Key;
+
+Key lastCommand[KB(2 * 1024)];
 int lastCommandLen;
 
 void InitChangeArena(Buffer* buffer) {
@@ -516,12 +521,42 @@ int IsKeyword(const char* str, int len) {
 }
 
 int IsType(const char* str, int len) {
-  const char* types[] = {"int",         "void",        "float",      "char",   "i32",
-                         "u8",          "Rect",        "FontData",   "Arena",  "MonochromeTexture",
-                         "BITMAPINFO",  "Spring",      "ChangeType", "str",    "EdFile",
-                         "PAINTSTRUCT", "LRESULT",     "UINT",       "WPARAM", "LPARAM",
-                         "HWND",        "MSG",         "u32",        "i64",    "u64",
-                         "Buffer",      "ChangeArena", "Change"};
+  const char* types[] = {"int",
+                         "void",
+                         "float",
+                         "char",
+                         "i32",
+                         "Key",
+                         "u8",
+                         "Rect",
+                         "FontData",
+                         "Arena",
+                         "MonochromeTexture",
+                         "BITMAPINFO",
+                         "Spring",
+                         "ChangeType",
+                         "str",
+                         "EdFile",
+                         "HDC",
+                         "MyBitmap",
+                         "PAINTSTRUCT",
+                         "LRESULT",
+                         "UINT",
+                         "WPARAM",
+                         "LPARAM",
+                         "HWND",
+                         "MSG",
+                         "u32",
+                         "i64",
+                         "f64",
+                         "f32",
+                         "u64",
+                         "Buffer",
+                         "SelectionRange",
+                         "Res",
+                         "ChangeArena",
+                         "Change",
+                         "CursorPos"};
   for (int i = 0; i < ArrayLength(types); i++) {
     if (strncmp(str, types[i], len) == 0 && types[i][len] == '\0') {
       return 1;

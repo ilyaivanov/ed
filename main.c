@@ -57,7 +57,7 @@ Buffer leftBuffer;
 char* leftFilePath = ".\\misc\\tasks.txt";
 
 Buffer middleBuffer;
-char* middleFilePath = ".\\main.c";
+char* middleFilePath = ".\\str.c";
 
 Buffer compilationOutputBuffer;
 Buffer rightBuffer;
@@ -109,7 +109,7 @@ Mode mode = Normal;
 BITMAPINFO bitmapInfo;
 MyBitmap canvas;
 HDC dc;
-char currentCommand[512];
+Key currentCommand[512];
 i32 currentCommandLen;
 i32 visibleCommandLen;
 FontData font;
@@ -507,7 +507,7 @@ i32 IsCommand(char* str) {
   i32 len = strlen(str);
   if (currentCommandLen == len) {
     for (i32 i = 0; i < len; i++) {
-      if (currentCommand[i] != str[i])
+      if (currentCommand[i].ch != str[i])
         return 0;
     }
     hasMatchedAnyCommand = 1;
@@ -524,18 +524,20 @@ void ClearCommand() {
 int isPlayingLastRepeat = 0;
 void SaveCommand() {
   if (!isPlayingLastRepeat) {
-    memmove(lastCommand, currentCommand, currentCommandLen);
+    memmove(lastCommand, currentCommand, currentCommandLen * sizeof(Key));
     lastCommandLen = currentCommandLen;
   }
 }
-void AppendCharIntoCommand(char ch) {
-  currentCommand[currentCommandLen++] = ch;
+
+void AppendCharIntoCommand(Key key) {
+  currentCommand[currentCommandLen++] = key;
+  char ch = key.ch;
   visibleCommandLen = 0;
   hasMatchedAnyCommand = 0;
   if (mode == LocalSearchTyping) {
 
   } else if (mode == FileSelection) {
-    char firstChar = currentCommand[0];
+    char firstChar = currentCommand[0].ch;
     if (firstChar >= '1' && firstChar <= '9') {
       char path[512] = {0};
       sprintf(path, "%s%s", rootDir, allFiles[firstChar - '1']);
@@ -548,13 +550,40 @@ void AppendCharIntoCommand(char ch) {
 
       hasMatchedAnyCommand = 1;
       if (!isPlayingLastRepeat)
-        lastCommand[lastCommandLen++] = ch;
+        lastCommand[lastCommandLen++].ch = ch;
+    } else if (ch == VK_BACK) {
+      RemoveCurrentChar();
+
+      hasMatchedAnyCommand = 1;
+      if (!isPlayingLastRepeat)
+        lastCommand[lastCommandLen++].ch = ch;
+    } else if (ch == 'w' && key.ctrl) {
+
+      int pos = MaxI32(selectedBuffer->cursor - 2, 0);
+      char* text = selectedBuffer->content;
+
+      while (pos > 0 && text[pos] != ' ' && text[pos] != '\n')
+        pos--;
+      if (text[pos] == '\n')
+        pos++;
+      if (pos != (selectedBuffer->cursor - 1)) {
+        RemoveChars(selectedBuffer, pos, selectedBuffer->cursor - 1);
+        SetCursorPosition(pos);
+        FindEntries(selectedBuffer);
+
+        if (!isPlayingLastRepeat) {
+          lastCommand[lastCommandLen].ctrl = 1;
+          lastCommand[lastCommandLen++].ch = ch;
+        }
+      }
+
+      hasMatchedAnyCommand = 1;
     } else if (ch < MAX_CHAR_CODE && ch >= ' ') {
       InsertCharAtCursor(selectedBuffer, ch);
 
       hasMatchedAnyCommand = 1;
       if (!isPlayingLastRepeat)
-        lastCommand[lastCommandLen++] = ch;
+        lastCommand[lastCommandLen++].ch = ch;
       if (isSearchVisible)
         FindEntries(selectedBuffer);
     }
@@ -580,15 +609,15 @@ void AppendCharIntoCommand(char ch) {
     if (IsCommand("W"))
       SetCursorPosition(JumpWordWithPunctuationForward(selectedBuffer));
 
-    if (currentCommandLen == 2 && currentCommand[0] == 'f') {
+    if (currentCommandLen == 2 && currentCommand[0].ch == 'f') {
       SetCursorPosition(
-          FindNextChar(selectedBuffer, selectedBuffer->cursor + 1, currentCommand[1]));
+          FindNextChar(selectedBuffer, selectedBuffer->cursor + 1, currentCommand[1].ch));
       hasMatchedAnyCommand = 1;
     }
 
-    if (currentCommandLen == 2 && currentCommand[0] == 't') {
+    if (currentCommandLen == 2 && currentCommand[0].ch == 't') {
       SetCursorPosition(
-          FindNextChar(selectedBuffer, selectedBuffer->cursor + 1, currentCommand[1]) - 1);
+          FindNextChar(selectedBuffer, selectedBuffer->cursor + 1, currentCommand[1].ch) - 1);
       hasMatchedAnyCommand = 1;
     }
 
@@ -653,7 +682,7 @@ void AppendCharIntoCommand(char ch) {
         int from = selectedBuffer->cursor;
         int lineEnd = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
         int to = MinI32(JumpWordForward(selectedBuffer) - 1, lineEnd - 1);
-        if (currentCommand[1] == 'W')
+        if (currentCommand[1].ch == 'W')
           to = MinI32(JumpWordWithPunctuationForward(selectedBuffer) - 1, lineEnd - 1);
 
         if (selectedBuffer->content[to] == ' ')
@@ -666,14 +695,14 @@ void AppendCharIntoCommand(char ch) {
 
       // TODO: these are starting to look like patterns for operation/motion common code
       if (currentCommandLen > 2) {
-        char op = currentCommand[0];
-        char motion = currentCommand[1];
+        char op = currentCommand[0].ch;
+        char motion = currentCommand[1].ch;
 
         int isValidOp = (op == 'd' || op == 'c' || op == 'y');
         int isValidMotion = motion == 'f' || motion == 't';
 
         if (!hasMatchedAnyCommand && currentCommandLen == 3 && isValidOp && isValidMotion) {
-          char ch = currentCommand[2];
+          char ch = currentCommand[2].ch;
           int from = selectedBuffer->cursor;
           int to = 0;
           if (motion == 'f')
@@ -821,9 +850,9 @@ void AppendCharIntoCommand(char ch) {
     if (IsCommand(" r"))
       RunCode();
 
-    if (currentCommandLen == 2 && currentCommand[0] == 'e') {
-      if (currentCommand[1] >= '0' && currentCommand[1] <= '9') {
-        NavigateToError(currentCommand[1] - '1');
+    if (currentCommandLen == 2 && currentCommand[0].ch == 'e') {
+      if (currentCommand[1].ch >= '0' && currentCommand[1].ch <= '9') {
+        NavigateToError(currentCommand[1].ch - '1');
         hasMatchedAnyCommand = 1;
       }
     }
@@ -891,8 +920,9 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     if (ch >= ' ' && ch <= MAX_CHAR_CODE) {
       if (mode == Normal && wParam == '.' && currentCommandLen == 0) {
         isPlayingLastRepeat = 1;
-        for (int i = 0; i < lastCommandLen; i++)
+        for (int i = 0; i < lastCommandLen; i++) {
           AppendCharIntoCommand(lastCommand[i]);
+        }
         isPlayingLastRepeat = 0;
       } else if (mode == LocalSearchTyping) {
         searchTerm[searchLen++] = wParam;
@@ -901,7 +931,7 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
         selectedBuffer->content[selectedBuffer->cursor] = ch;
         mode = Normal;
       } else
-        AppendCharIntoCommand(ch);
+        AppendCharIntoCommand((Key){.ch = ch});
     }
     break;
   case WM_SYSKEYDOWN:
@@ -940,14 +970,16 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
       if (wParam == VK_ESCAPE)
         mode = Normal;
     } else if (mode == Insert) {
-      if (wParam == VK_RETURN)
-        BreakLineAtCursor(selectedBuffer);
+      if (wParam == 'W' && IsKeyPressed(VK_CONTROL))
+        AppendCharIntoCommand((Key){.ch = 'w', .ctrl = 1});
+      else if (wParam == VK_BACK)
+        AppendCharIntoCommand((Key){.ch = VK_BACK});
       else if (wParam == 'B' && IsKeyPressed(VK_CONTROL))
         RemoveCurrentChar();
-      else if (wParam == VK_BACK)
-        RemoveCurrentChar();
+      else if (wParam == VK_RETURN)
+        BreakLineAtCursor(selectedBuffer);
       else if (wParam == VK_ESCAPE)
-        AppendCharIntoCommand(wParam);
+        AppendCharIntoCommand((Key){.ch = wParam});
     } else if (mode == Normal) {
       if (wParam == VK_RETURN)
         BreakLineAtCursor(selectedBuffer);
@@ -1081,15 +1113,18 @@ void DrawFooter() {
   int commandX = (strlen(selectedBuffer->filePath) + 2) * font.charWidth;
   for (int i = 0; i < charsToShow; i++) {
     u32 color = currentCommandLen > 0 ? 0xffffff : 0xbbbbbb;
-    CopyMonochromeTextureRectTo(&canvas, &footerRect, &font.textures[currentCommand[i]], commandX,
-                                y, color);
+    CopyMonochromeTextureRectTo(&canvas, &footerRect, &font.textures[currentCommand[i].ch],
+                                commandX, y, color);
     commandX += font.charWidth;
   }
   char posLabel[512];
 
   CursorPos cursor = GetCursorPosition(selectedBuffer);
   char lastCommandUI[512] = {0};
-  memmove(lastCommandUI, lastCommand, lastCommandLen);
+  for (int i = 0; i < lastCommandLen; i++)
+    lastCommandUI[i] = lastCommand[i].ch;
+
+  // memmkve(lastCommandUI, lastCommand, lastCommandLen);
   int chars =
       sprintf(posLabel,
               "%s    changes size %d, capacity %d   buffer size %d, capacity %d   pos %d, line %d, "
@@ -1257,7 +1292,7 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset, EdFile file) {
     SplitIntoTokens(buffer);
   else
     tokensCount = 0;
-    
+
   int currentToken = 0;
 
   for (i32 i = 0; i < buffer->size; i++) {
@@ -1293,7 +1328,7 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset, EdFile file) {
     if (t && i >= (t->start + t->len - 1))
       currentToken++;
   }
-  
+
   if (mode == FileSelection && buffer == selectedBuffer) {
     i32 fileBoxWidth = 400;
     int boxX = rect.x + rect.width / 2 - fileBoxWidth / 2;
