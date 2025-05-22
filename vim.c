@@ -41,7 +41,9 @@ typedef struct str {
 
 typedef struct Key {
   int ctrl;
+  int shift;
   char ch;
+  
 } Key;
 
 Key lastCommand[KB(2 * 1024)];
