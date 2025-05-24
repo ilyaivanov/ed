@@ -1,7 +1,9 @@
-
 #pragma once
 
 #include "win32.c"
+
+// canvas doesn't belong here
+MyBitmap canvas;
 
 typedef struct Arena {
   u8* start;
@@ -196,4 +198,43 @@ inline void CopyMonochromeTextureRectTo(const MyBitmap* canvas, const Rect* rect
     source -= sourceT->width;
     row += canvas->width;
   }
+}
+
+void PaintRectAlpha(i32 x, i32 y, i32 width, i32 height, u32 color, f32 a) {
+  i32 x0 = x < 0 ? 0 : x;
+  i32 y0 = y < 0 ? 0 : y;
+  i32 x1 = (x + width) > canvas.width ? canvas.width : (x + width);
+  i32 y1 = (y + height) > canvas.height ? canvas.height : (y + height);
+
+  for (i32 j = y0; j < y1; j++) {
+    for (i32 i = x0; i < x1; i++) {
+      u32* pixel = &canvas.pixels[j * canvas.width + i];
+      *pixel = AlphaBlendColors(*pixel, color, a);
+    }
+  }
+}
+
+void PaintRect(i32 x, i32 y, i32 width, i32 height, u32 color) {
+  i32 x0 = x < 0 ? 0 : x;
+  i32 y0 = y < 0 ? 0 : y;
+  i32 x1 = (x + width) > canvas.width ? canvas.width : (x + width);
+  i32 y1 = (y + height) > canvas.height ? canvas.height : (y + height);
+
+  for (i32 j = y0; j < y1; j++) {
+    for (i32 i = x0; i < x1; i++) {
+      canvas.pixels[j * canvas.width + i] = color;
+    }
+  }
+}
+
+void RectFill(Rect r, u32 color) {
+  PaintRect(r.x, r.y, r.width, r.height, color);
+}
+
+void RectFillRightBorder(Rect r, i32 width, u32 color) {
+  PaintRect(r.x + r.width - width / 2, r.y, width, r.height, color);
+}
+
+void RectFillTopBorder(Rect r, i32 height, u32 color) {
+  PaintRect(r.x, r.y - height / 2, r.width, height, color);
 }

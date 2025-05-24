@@ -14,6 +14,9 @@ Things to play around
     - Run app in the editor (with logs, crash reports)
     - Folds
 
+ideas
+    - Fold stuff not only based on nestedness, but using comment blocks
+       for example //\n //Tags \n // will behave as -1 level until next block
 
 
 Timeline
@@ -25,15 +28,15 @@ Week 4
      - COnsider removing backspace and use only c-w c-b c-u
      - MAke sure your hands rest on the HOME
      - Bug: replace char doesn't mark doc as not saved
-     - Highlight keywords and hardcoded types
-     - Highlight comments and strings
+     y Highlight keywords and hardcoded types
+     y Highlight comments and strings
      - Integrate ctags with go to definition
      y Make p P behave like in vim
      y Implement F f T t motions
      - Start working on text objects
      - Text wrap modes: no, word-break, char-break
      - Nice looking tree in github when creating PR. Consider this for file explorer 
-     - <C-W> <C-U> in insert mode
+     - <C-w> <C-u> <C-b> in insert mode
      - Think about better structure. mainly deps main.c <-> vim.c
      p Implement . (repeat last command)
      - Remember position, offset when switching to another buffer
@@ -42,16 +45,25 @@ Week 4
      - search by word, meaning search separate token, not just substring
      - % to jump to matching char. Highlight matching char when focused
      - show relative line numbers
+     - figure out how to handle same file open at two splits
+       - also make sure external changes to the file will be loaded
+     - accept auto-suggestion from the clang compiler
      - forbid improper capitalization (R with left shift)
           with animation feedback
 
 
+  Saturday
+     - Finish tag search
+       
+  Friday
+  
+  Thursday
+    - Move lines via tab\shift-tab
+    
   Wednesday 
     - Finishing simple tokenizer
        - types hardcoded, keywords, preprop, strings, comments
     - Moving towards a single pipeline for commands
-    
-    
     
   Tueday
     - finish f t . (postponing F T ; ,)

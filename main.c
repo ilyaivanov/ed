@@ -9,7 +9,6 @@
 #include <stdlib.h>
 
 int isRightBufferVisible = 1;
-
 HWND mainWindow;
 int isRunning = 1;
 int isFullscreen = 0;
@@ -63,7 +62,7 @@ Buffer compilationOutputBuffer;
 Buffer rightBuffer;
 char* rightFilePath = ".\\vim.c";
 
-char* allFiles[] = {"main.c",   "font.c", "anim.c",  "math.c",
+char* allFiles[] = {"main.c",   "font.c", "anim.c",  "math.c",         "tags",
                     "search.c", "vim.c",  "win32.c", "misc\\build.bat"};
 
 typedef enum EdFile { Left, Middle, CompilationResults, Right } EdFile;
@@ -107,7 +106,6 @@ f32 appTimeMs = 0;
 Mode mode = Normal;
 
 BITMAPINFO bitmapInfo;
-MyBitmap canvas;
 HDC dc;
 Key currentCommand[512];
 i32 currentCommandLen;
@@ -485,11 +483,9 @@ void RunCode() {
   int len = 0;
   char output[KB(20)];
   RunCommand(cmd, output, &len);
-  if (len > 0) {
-    CopyStrIntoBuffer(&compilationOutputBuffer, output, len);
-    OnLayout();
-    Parse();
-  }
+  CopyStrIntoBuffer(&compilationOutputBuffer, output, len);
+  OnLayout();
+  Parse();
 }
 
 inline BOOL IsKeyPressed(u32 code) {
@@ -529,8 +525,7 @@ void SaveCommand() {
   }
 }
 void MoveTextRight() {
-  if (mode == Visual || mode == VisualLine)
-    {
+  if (mode == Visual || mode == VisualLine) {
     SelectionRange range = GetSelectionRange();
     int pos = FindLineStart(selectedBuffer, range.left);
     int charsAdded = 0;
@@ -554,7 +549,7 @@ void MoveTextRight() {
 
 void MoveTextLeft() {
   char* text = selectedBuffer->content;
-  if (mode == Visual || mode == VisualLine){
+  if (mode == Visual || mode == VisualLine) {
     SelectionRange range = GetSelectionRange();
     int pos = FindLineStart(selectedBuffer, range.left);
     int charsRemoved = 0;
@@ -584,12 +579,61 @@ void MoveTextLeft() {
   }
 }
 
+int StrIndexOf(char* text, int size, char* substr) {
+  int pos = 0;
+  int matchedChar = 0;
+  int len = strlen(substr);
+
+  while (pos < size) {
+    while (text[pos + matchedChar] == substr[matchedChar]) {
+      matchedChar++;
+      if (matchedChar == len) {
+        return pos;
+      }
+    }
+    matchedChar = 0;
+    pos++;
+  }
+  return -1;
+}
+
+void NavigateToFindSearchResult() {
+  CtagEntry* entry = found[0];
+  if (entry && *entry->filename != '\0') {
+    char path[512] = {0};
+    sprintf(path, "%s%s", rootDir, entry->filename);
+
+    // todo; check if other split has this filename loaded
+    if (!IsStrEqual(path, selectedBuffer->filePath)) {
+      LoadFileIntoSelectedBuffer(path);
+    }
+    int i = StrIndexOf(selectedBuffer->content, selectedBuffer->size, entry->pattern);
+    if (i >= 0)
+      SetCursorPosition(i);
+  }
+}
+
 void AppendCharIntoCommand(Key key) {
   currentCommand[currentCommandLen++] = key;
   char ch = key.ch;
   visibleCommandLen = 0;
   hasMatchedAnyCommand = 0;
-  if (mode == LocalSearchTyping) {
+  if (isTagsSearchVisible) {
+    hasMatchedAnyCommand = 1;
+    if (ch == VK_BACK) {
+      tagsSearchLen = MaxI32(tagsSearchLen - 1, 0);
+    } else if (ch == VK_RETURN) {
+      NavigateToFindSearchResult();
+      mode = Normal;
+      isTagsSearchVisible = 0;
+      hasMatchedAnyCommand = 1;
+    } else if (ch == VK_ESCAPE) {
+      mode = Normal;
+      isTagsSearchVisible = 0;
+    } else
+      tagsSearch[tagsSearchLen++] = key.ch;
+
+  } else if (mode == LocalSearchTyping) {
 
   } else if (mode == FileSelection) {
     char firstChar = currentCommand[0].ch;
@@ -602,12 +646,6 @@ void AppendCharIntoCommand(Key key) {
   } else if (mode == Insert) {
     if (ch == VK_ESCAPE) {
       mode = Normal;
-      hasMatchedAnyCommand = 1;
-      if (!isPlayingLastRepeat)
-        lastCommand[lastCommandLen++].ch = ch;
-    } else if (ch == VK_BACK) {
-      RemoveCurrentChar();
-
       hasMatchedAnyCommand = 1;
       if (!isPlayingLastRepeat)
         lastCommand[lastCommandLen++].ch = ch;
@@ -651,6 +689,13 @@ void AppendCharIntoCommand(Key key) {
       hasMatchedAnyCommand = 1;
     }
 
+    if (ch == VK_RETURN)
+      BreakLineAtCursor(selectedBuffer);
+
+    else if (ch == VK_BACK) {
+      RemoveCurrentChar();
+      hasMatchedAnyCommand = 1;
+    }
     if (IsCommand("j"))
       MoveDown();
 
@@ -734,6 +779,14 @@ void AppendCharIntoCommand(Key key) {
       } else if (ch == VK_TAB) {
         MoveTextRight();
         hasMatchedAnyCommand = 1;
+      }
+      if (IsCommand(" m")) {
+        int len = 0;
+        char output[KB(20)];
+        RunCommand("ctags --fields=+ne *", output, &len);
+        
+        ReadCtagsFile();
+        isTagsSearchVisible = !isTagsSearchVisible;
       }
       if (IsCommand("dl") || IsCommand("dd")) {
         int from = FindLineStart(selectedBuffer, selectedBuffer->cursor);
@@ -941,6 +994,10 @@ void AppendCharIntoCommand(Key key) {
     if (IsCommand(" f"))
       FormatSelectedFile();
 
+    if (IsCommand(" y")) {
+      isFullscreen = !isFullscreen;
+      SetFullscreen(mainWindow, isFullscreen);
+    }
     if (IsCommand(" w"))
       SaveSelectedFile();
 
@@ -1014,7 +1071,7 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     break;
   case WM_SYSKEYDOWN:
   case WM_KEYDOWN:
-    if (wParam == VK_ESCAPE || wParam == VK_TAB)
+    if (wParam == VK_ESCAPE || wParam == VK_RETURN || wParam == VK_TAB || wParam == VK_BACK)
       AppendCharIntoCommand((Key){.ch = wParam, .shift = IsKeyPressed(VK_SHIFT)});
 
     if (mode == LocalSearchTyping) {
@@ -1060,10 +1117,6 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
       else if (wParam == VK_RETURN)
         BreakLineAtCursor(selectedBuffer);
     } else if (mode == Normal) {
-      if (wParam == VK_RETURN)
-        BreakLineAtCursor(selectedBuffer);
-      else if (wParam == VK_BACK)
-        RemoveCurrentChar();
       if (wParam == VK_ESCAPE)
         ClearCommand();
       if (wParam == 'R' && IsKeyPressed(VK_CONTROL)) {
@@ -1089,10 +1142,7 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
         fontArena.bytesAllocated = 0;
         ResetAppFonts();
       }
-      if (wParam == VK_F11) {
-        isFullscreen = !isFullscreen;
-        SetFullscreen(window, isFullscreen);
-      } else if (IsKeyPressed(VK_CONTROL) && wParam == 'D') {
+      if (IsKeyPressed(VK_CONTROL) && wParam == 'D') {
         selectedOffset->target += (float)selectedRect->height / 2.0f;
       } else if (IsKeyPressed(VK_CONTROL) && wParam == 'U') {
         selectedOffset->target -= (float)selectedRect->height / 2.0f;
@@ -1132,45 +1182,6 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     OnLayout();
   }
   return DefWindowProc(window, message, wParam, lParam);
-}
-
-void PaintRectAlpha(i32 x, i32 y, i32 width, i32 height, u32 color, f32 a) {
-  i32 x0 = x < 0 ? 0 : x;
-  i32 y0 = y < 0 ? 0 : y;
-  i32 x1 = (x + width) > canvas.width ? canvas.width : (x + width);
-  i32 y1 = (y + height) > canvas.height ? canvas.height : (y + height);
-
-  for (i32 j = y0; j < y1; j++) {
-    for (i32 i = x0; i < x1; i++) {
-      u32* pixel = &canvas.pixels[j * canvas.width + i];
-      *pixel = AlphaBlendColors(*pixel, color, a);
-    }
-  }
-}
-
-void PaintRect(i32 x, i32 y, i32 width, i32 height, u32 color) {
-  i32 x0 = x < 0 ? 0 : x;
-  i32 y0 = y < 0 ? 0 : y;
-  i32 x1 = (x + width) > canvas.width ? canvas.width : (x + width);
-  i32 y1 = (y + height) > canvas.height ? canvas.height : (y + height);
-
-  for (i32 j = y0; j < y1; j++) {
-    for (i32 i = x0; i < x1; i++) {
-      canvas.pixels[j * canvas.width + i] = color;
-    }
-  }
-}
-
-void RectFill(Rect r, u32 color) {
-  PaintRect(r.x, r.y, r.width, r.height, color);
-}
-
-void RectFillRightBorder(Rect r, i32 width, u32 color) {
-  PaintRect(r.x + r.width - width / 2, r.y, width, r.height, color);
-}
-
-void RectFillTopBorder(Rect r, i32 height, u32 color) {
-  PaintRect(r.x, r.y - height / 2, r.width, height, color);
 }
 
 void DrawFooter() {
@@ -1454,6 +1465,8 @@ void Draw() {
   DrawArea(compilationRect, &compilationOutputBuffer, &compilationOffset, CompilationResults);
 
   DrawFooter();
+  if (isTagsSearchVisible)
+    DrawTagsSearch(&font);
 
   StretchDIBits(dc, 0, 0, screen.width, screen.height, 0, 0, screen.width, screen.height,
                 canvas.pixels, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
