@@ -42,6 +42,7 @@ typedef struct str {
 typedef struct Key {
   int ctrl;
   int shift;
+  int alt;
   char ch;
   
 } Key;
