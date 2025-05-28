@@ -39,6 +39,9 @@ Spring leftOffset;
 Rect compilationRect;
 Spring compilationOffset;
 
+Rect executionRect;
+Spring executionOffset;
+
 Rect middleRect;
 Spring middleOffset;
 
@@ -70,27 +73,11 @@ typedef enum EdFile { Left, Middle, CompilationResults, Right } EdFile;
 Buffer* selectedBuffer;
 Spring* selectedOffset;
 Rect* selectedRect;
-EdFile selectedFile;
 
-void SelectFile(EdFile file) {
-  if (!isRightBufferVisible && file == Right)
-    return;
-  selectedFile = file;
-  if (file == Left) {
-    selectedBuffer = &leftBuffer;
-    selectedOffset = &leftOffset;
-    selectedRect = &leftRect;
-  }
-  if (file == Right) {
-    selectedBuffer = &rightBuffer;
-    selectedOffset = &rightOffset;
-    selectedRect = &rightRect;
-  }
-  if (file == Middle) {
-    selectedBuffer = &middleBuffer;
-    selectedOffset = &middleOffset;
-    selectedRect = &middleRect;
-  }
+void SelectBuffer(Buffer* buffer, Spring* offset, Rect* rect) {
+  selectedBuffer = buffer;
+  selectedOffset = offset;
+  selectedRect = rect;
 }
 
 typedef enum Mode {
@@ -117,6 +104,34 @@ i32 lineHeightPx;
 f32 lineHeight = 1.1;
 i32 fontSize = 14;
 char* fontName = "Consolas";
+
+void OnLayout() {
+  int footerHeight = font.charHeight + footerPadding * 2;
+  lineHeightPx = RoundI32((f32)font.charHeight * lineHeight);
+  footerRect.width = screen.width;
+  footerRect.height = footerHeight;
+  footerRect.y = screen.height - footerRect.height;
+
+  compilationRect.width = leftRect.width = 70 * font.charWidth;
+  compilationRect.height = 800;
+
+  leftRect.height = canvas.height - compilationRect.height - footerRect.height;
+  compilationRect.y = leftRect.height;
+
+  i32 codeWidth = (screen.width - leftRect.width);
+  middleRect.x = leftRect.width;
+  if (isRightBufferVisible) {
+    middleRect.width = codeWidth / 2;
+    rightRect.width = screen.width - (leftRect.width + middleRect.width);
+  } else {
+    middleRect.width = canvas.width - leftRect.width;
+  }
+
+  middleRect.height = canvas.height - footerRect.height;
+
+  rightRect.x = middleRect.x + middleRect.width;
+  rightRect.height = canvas.height - footerRect.height;
+}
 
 typedef struct CursorPos {
   i32 global;
@@ -332,34 +347,6 @@ SelectionRange GetSelectionRange() {
   res.left = selectionLeft;
   res.right = selectionRight;
   return res;
-}
-
-void OnLayout() {
-  int footerHeight = font.charHeight + footerPadding * 2;
-  lineHeightPx = RoundI32((f32)font.charHeight * lineHeight);
-  footerRect.width = screen.width;
-  footerRect.height = footerHeight;
-  footerRect.y = screen.height - footerRect.height;
-
-  compilationRect.width = leftRect.width = 70 * font.charWidth;
-  compilationRect.height = 800;
-
-  leftRect.height = canvas.height - compilationRect.height - footerRect.height;
-  compilationRect.y = leftRect.height;
-
-  i32 codeWidth = (screen.width - leftRect.width) / 2;
-  middleRect.x = leftRect.width;
-  if (isRightBufferVisible) {
-    middleRect.width = canvas.width / 3;
-    rightRect.width = canvas.width - (leftRect.width + middleRect.width);
-  } else {
-    middleRect.width = canvas.width - leftRect.width;
-  }
-
-  middleRect.height = canvas.height - footerRect.height;
-
-  rightRect.x = middleRect.x + middleRect.width;
-  rightRect.height = canvas.height - footerRect.height;
 }
 
 void ResetAppFonts() {
@@ -613,6 +600,14 @@ i32 IsCtrlCharCommand(char ch) {
   return 0;
 }
 
+i32 IsShiftCharCommand(char ch) {
+  if (currentCommandLen == 1 && currentCommand[0].ch == ch && currentCommand[0].shift) {
+    hasMatchedAnyCommand = 1;
+    return 1;
+  }
+  return 0;
+}
+
 i32 IsAltCharCommand(char ch) {
   if (currentCommandLen == 1 && currentCommand[0].ch == ch && currentCommand[0].alt) {
     hasMatchedAnyCommand = 1;
@@ -732,8 +727,10 @@ void HandleTagSearchCommand() {
     mode = Normal;
     isTagsSearchVisible = 0;
     hasMatchedAnyCommand = 1;
-  } else
+  } else {
     tagsSearch[tagsSearchLen++] = ch;
+    tagsSearch[tagsSearchLen] = '\0';
+  }
 }
 void HandleLocalSearchCommand() {
   Key key = currentCommand[currentCommandLen];
@@ -745,25 +742,23 @@ void HandleLocalSearchCommand() {
       FindEntries(selectedBuffer);
     }
   }
-  if (ch == 'W' && key.ctrl) {
+  if (IsCtrlCharCommand('W')) {
     searchLen = MaxI32(searchLen - 1, 0);
     while (searchTerm[searchLen] != ' ' || searchLen == 0)
       searchLen--;
     searchTerm[searchLen] = '\0';
     FindEntries(selectedBuffer);
   }
-  if (ch == 'U' && key.ctrl) {
+  if (IsCtrlCharCommand('U')) {
     searchLen = 0;
     searchTerm[searchLen] = '\0';
     FindEntries(selectedBuffer);
   }
-  if (ch == 'N' && key.ctrl) {
+  if (IsCtrlCharCommand('N'))
     MoveNextOnSearch();
-  }
 
-  if (ch == 'P' && key.ctrl) {
+  if (IsCtrlCharCommand('P'))
     MovePrevOnSearch();
-  }
 }
 
 void HandleFileSelectionCommand() {
@@ -779,11 +774,13 @@ void HandleFileSelectionCommand() {
 void HandleInsertCommand() {
   Key key = currentCommand[0];
   char ch = key.ch;
-  if (ch == VK_TAB && key.shift)
+  if (IsShiftCharCommand(VK_TAB))
     MoveTextLeft();
-  else if (ch == VK_TAB)
+  else if (IsCharCommand(VK_TAB))
     MoveTextRight();
-  else if (ch == 'W' && key.ctrl) {
+  else if (IsCharCommand(VK_BACK))
+    RemoveCurrentChar();
+  else if (IsCtrlCharCommand('W')) {
     int pos = MaxI32(selectedBuffer->cursor - 2, 0);
     char* text = selectedBuffer->content;
 
@@ -801,26 +798,14 @@ void HandleInsertCommand() {
         lastCommand[lastCommandLen++].ch = ch;
       }
     }
-
-    hasMatchedAnyCommand = 1;
   }
 
-  else if (key.ch == 'B' && key.ctrl) {
+  else if (IsCtrlCharCommand('B'))
     RemoveCurrentChar();
-    hasMatchedAnyCommand = 1;
-  } else if (IsCharCommand(VK_RETURN))
+  else if (IsCharCommand(VK_RETURN))
     BreakLineAtCursor(selectedBuffer);
 
-  else if (IsCtrlCharCommand('R')) {
-    Change* appliedChange = RedoLastChange(selectedBuffer);
-    if (appliedChange && appliedChange->type != Replaced)
-      SetCursorPosition(appliedChange->at);
-  }
-  if (IsCtrlCharCommand('D')) {
-    selectedOffset->target += (float)selectedRect->height / 2.0f;
-  } else if (IsCtrlCharCommand('U')) {
-    selectedOffset->target -= (float)selectedRect->height / 2.0f;
-  } else if (ch < MAX_CHAR_CODE && ch >= ' ' && !key.ctrl && !key.alt) {
+  else if (ch < MAX_CHAR_CODE && ch >= ' ' && !key.ctrl && !key.alt) {
     InsertCharAtCursor(selectedBuffer, ch);
 
     hasMatchedAnyCommand = 1;
@@ -1151,11 +1136,11 @@ void HandleNormalCommand() {
   }
 
   if (IsAltCharCommand('1'))
-    SelectFile(Left);
+    SelectBuffer(&leftBuffer, &leftOffset, &leftRect);
   if (IsAltCharCommand('2'))
-    SelectFile(Middle);
+    SelectBuffer(&middleBuffer, &middleOffset, &middleRect);
   if (IsAltCharCommand('3'))
-    SelectFile(Right);
+    SelectBuffer(&rightBuffer, &rightOffset, &rightRect);
   if (IsCtrlCharCommand('S'))
     SaveSelectedFile();
   if (IsCtrlCharCommand(VK_OEM_PLUS)) {
@@ -1193,7 +1178,11 @@ void HandleNormalCommand() {
     if (appliedChange && appliedChange->type != Replaced)
       SetCursorPosition(appliedChange->at);
   }
-
+  if (IsCtrlCharCommand('R')) {
+    Change* appliedChange = RedoLastChange(selectedBuffer);
+    if (appliedChange && appliedChange->type != Replaced)
+      SetCursorPosition(appliedChange->at);
+  }
   if (IsCommand(" n")) {
     isSearchVisible = 0;
   }
@@ -1279,6 +1268,7 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
         StartSearch();
       } else if (mode == ReplaceChar) {
         selectedBuffer->content[selectedBuffer->cursor] = ch;
+        selectedBuffer->isSaved = 0;
         mode = Normal;
       } else
         AppendCharIntoCommand((Key){.ch = ch});
@@ -1420,7 +1410,7 @@ void DrawSelection(Buffer* buffer, Rect rect, Spring* offset) {
   }
 }
 
-void DrawArea(Rect rect, Buffer* buffer, Spring* offset, EdFile file) {
+void DrawArea(Rect rect, Buffer* buffer, Spring* offset) {
   if (rect.width == 0)
     return;
   i32 startX = rect.x + horizPadding;
@@ -1445,7 +1435,7 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset, EdFile file) {
   if (!buffer->isSaved)
     PaintRect(rect.x + rect.width - 30 - scrollbarWidth, rect.y, 20, 10, 0x882222);
 
-  int hasCursor = file == selectedFile && mode != FileSelection;
+  int hasCursor = buffer == selectedBuffer && mode != FileSelection;
   if (hasCursor) {
     // cursor line background
     PaintRect(rect.x, cursorY, rect.width, lineHeightPx, lineColor);
@@ -1502,9 +1492,7 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset, EdFile file) {
   }
 
   if (hasCursor) {
-    // selection
-    if (selectedFile == file)
-      DrawSelection(buffer, rect, offset);
+    DrawSelection(buffer, rect, offset);
 
     // cursor
     PaintRect(cursorX, cursorY, font.charWidth, lineHeightPx, cursorColor);
@@ -1605,10 +1593,10 @@ void Draw() {
   RectFillRightBorder(compilationRect, 4, borderColor);
   RectFillTopBorder(compilationRect, 4, borderColor);
 
-  DrawArea(leftRect, &leftBuffer, &leftOffset, Left);
-  DrawArea(middleRect, &middleBuffer, &middleOffset, Middle);
-  DrawArea(rightRect, &rightBuffer, &rightOffset, Right);
-  DrawArea(compilationRect, &compilationOutputBuffer, &compilationOffset, CompilationResults);
+  DrawArea(leftRect, &leftBuffer, &leftOffset);
+  DrawArea(middleRect, &middleBuffer, &middleOffset);
+  DrawArea(rightRect, &rightBuffer, &rightOffset);
+  DrawArea(compilationRect, &compilationOutputBuffer, &compilationOffset);
 
   DrawFooter();
   if (isTagsSearchVisible)
@@ -1651,7 +1639,7 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
   compilationOutputBuffer.capacity = KB(500);
   compilationOutputBuffer.content = VirtualAllocateMemory(compilationOutputBuffer.capacity);
 
-  SelectFile(Middle);
+  SelectBuffer(&middleBuffer, &middleOffset, &middleRect);
 
   InitAnimations();
 
