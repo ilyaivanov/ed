@@ -161,10 +161,71 @@ i32 GetPageHeight(Buffer* buffer) {
   return rows * lineHeightPx;
 }
 
+int GetMatchingCharIndex() {
+  char* text = selectedBuffer->content;
+  int pos = selectedBuffer->cursor;
+
+  char currentChar = text[pos];
+  char oposingChar = 0;
+  if (currentChar == '(')
+    oposingChar = ')';
+
+  if (currentChar == '{')
+    oposingChar = '}';
+
+  if (currentChar == '[')
+    oposingChar = ']';
+
+  if (currentChar == ')')
+    oposingChar = '(';
+
+  if (currentChar == '}')
+    oposingChar = '{';
+
+  if (currentChar == ']')
+    oposingChar = '[';
+
+  if (!oposingChar)
+    return -1;
+
+  int isGoingForwards = currentChar == '(' || currentChar == '{' || currentChar == '[';
+
+  int numberOfScopes = 0;
+  if (isGoingForwards) {
+    while (pos < selectedBuffer->size) {
+      if (text[pos] == currentChar)
+        numberOfScopes++;
+      if (text[pos] == oposingChar)
+        numberOfScopes--;
+
+      if (text[pos] == oposingChar && numberOfScopes == 0) {
+        break;
+      }
+      pos++;
+    }
+    return pos;
+  } else {
+    while (pos >= 0) {
+      if (text[pos] == oposingChar)
+        numberOfScopes++;
+      if (text[pos] == currentChar)
+        numberOfScopes--;
+
+      if (text[pos] == oposingChar && numberOfScopes == 0) {
+        break;
+      }
+      pos--;
+    }
+    return pos;
+  }
+  return -1;
+}
+
 void SetCursorPosition(i32 v) {
   if (v < 0)
     return;
   selectedBuffer->cursor = Clampi32(v, 0, selectedBuffer->size - 1);
+  selectedBuffer->oposingCharAt = GetMatchingCharIndex();
   CursorPos cursor = GetCursorPosition(selectedBuffer);
 
   float lineToLookAhead = 5.0f * lineHeightPx;
@@ -246,6 +307,7 @@ void MovePrevOnSearch() {
     }
   }
 }
+
 void StartSearch() {
   isSearchVisible = 1;
   FindEntries(selectedBuffer);
@@ -257,6 +319,7 @@ typedef struct SelectionRange {
   i32 left;
   i32 right;
 } SelectionRange;
+
 SelectionRange GetSelectionRange() {
   i32 selectionLeft = MinI32(selectedBuffer->selectionStart, selectedBuffer->cursor);
   i32 selectionRight = MaxI32(selectedBuffer->selectionStart, selectedBuffer->cursor);
@@ -504,49 +567,9 @@ void BuildLib() {
 }
 
 void MoveToMatchingCharacter() {
-  char* text = selectedBuffer->content;
-  int pos = selectedBuffer->cursor;
-
-  int numberOfScopes = 0;
-  char currentChar = '(';
-  char oposingChar = ')';
-  if (text[pos] == '{') {
-    currentChar = '{';
-    oposingChar = '}';
-  }
-  if (text[pos] == '[') {
-    currentChar = '[';
-    oposingChar = ']';
-  }
-
-  if (text[pos] == currentChar) {
-    while (pos < selectedBuffer->size) {
-      if (text[pos] == currentChar)
-        numberOfScopes++;
-      if (text[pos] == oposingChar)
-        numberOfScopes--;
-
-      if (text[pos] == oposingChar && numberOfScopes == 0) {
-        break;
-      }
-      pos++;
-    }
-    SetCursorPosition(pos);
-
-  } else if (text[pos] == oposingChar) {
-    while (pos >= 0) {
-      if (text[pos] == oposingChar)
-        numberOfScopes++;
-      if (text[pos] == currentChar)
-        numberOfScopes--;
-
-      if (text[pos] == currentChar && numberOfScopes == 0) {
-        break;
-      }
-      pos--;
-    }
-    SetCursorPosition(pos);
-  }
+  int matchingIndex = GetMatchingCharIndex();
+  if (matchingIndex >= 0)
+    SetCursorPosition(matchingIndex);
 }
 
 inline BOOL IsKeyPressed(u32 code) {
@@ -1528,6 +1551,10 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset, EdFile file) {
 
       u32 charColor = (i == buffer->cursor && hasCursor) ? colorsBg : color;
       CopyMonochromeTextureRectTo(&canvas, &rect, &font.textures[ch], x, charY, charColor);
+
+      if (buffer == selectedBuffer && i == buffer->oposingCharAt)
+        PaintRect(x, charY + lineHeightPx - 3, font.charWidth, 3, cursorColor);
+
       x += font.charWidth;
     } else {
       PaintRect(x, charY, font.charWidth, lineHeightPx, 0xff0000);

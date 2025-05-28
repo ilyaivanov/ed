@@ -26,25 +26,18 @@ typedef struct Buffer {
 
   i32 cursor;
   i32 selectionStart;
-
+  i32 oposingCharAt;
   i32 isSaved;
   char filePath[512];
 
   ChangeArena changeArena;
 } Buffer;
 
-typedef struct str {
-  int size;
-  int capacity;
-  char content[];
-} str;
-
 typedef struct Key {
   int ctrl;
   int shift;
   int alt;
   char ch;
-
 } Key;
 
 Key lastCommand[KB(2 * 1024)];
@@ -333,7 +326,7 @@ Buffer ReadFileIntoDoubledSizedBuffer(char* path) {
       res[fileSizeAfter++] = file[i];
   }
   VirtualFreeMemory(file);
-  Buffer resFile = {.capacity = fileSize * 2, .size = fileSizeAfter, .content = res, .isSaved = 1};
+  Buffer resFile = {.capacity = fileSize * 2, .size = fileSizeAfter, .content = res, .isSaved = 1 , .oposingCharAt = -1};
 
   strcpy_s(resFile.filePath, 512, path);
 
