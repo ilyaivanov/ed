@@ -18,13 +18,6 @@ i32 entriesCount;
 u8 searchTerm[255];
 i32 searchLen;
 
-inline char ToCharLower(char ch) {
-  if (ch >= 'A' && ch <= 'Z')
-    return ch + ('a' - 'A');
-
-  return ch;
-}
-
 void FindEntries(Buffer* buffer) {
   i32 currentWordIndex = 0;
   entriesCount = 0;
@@ -130,14 +123,7 @@ void ReadCtagsFile() {
 }
 
 int DoesEntryMatch(CtagEntry* entry) {
-  int i = 0;
-  while (i < tagsSearchLen) {
-    char ch = entry->name[i];
-    if (ToCharLower(ch) != ToCharLower(tagsSearch[i]))
-      return 0;
-    i++;
-  }
-  return 1;
+  return StrIndexOfCaseInsensitive(entry->name, tagsSearch) >= 0;
 }
 
 CtagEntry* found[20] = {0};

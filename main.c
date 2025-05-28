@@ -488,6 +488,67 @@ void RunCode() {
   Parse();
 }
 
+void BuildLib() {
+  SaveSelectedFile();
+  char* cmd = "cmd /c .\\misc\\build.bat";
+  int len = 0;
+  char output[KB(20)];
+
+  char* s = "Hello there\n";
+  memmove(output, s, strlen(s));
+  len = strlen(s);
+  // RunCommand(cmd, output, &len);
+  CopyStrIntoBuffer(&compilationOutputBuffer, output, len);
+  OnLayout();
+  Parse();
+}
+
+void MoveToMatchingCharacter() {
+  char* text = selectedBuffer->content;
+  int pos = selectedBuffer->cursor;
+
+  int numberOfScopes = 0;
+  char currentChar = '(';
+  char oposingChar = ')';
+  if (text[pos] == '{') {
+    currentChar = '{';
+    oposingChar = '}';
+  }
+  if (text[pos] == '[') {
+    currentChar = '[';
+    oposingChar = ']';
+  }
+
+  if (text[pos] == currentChar) {
+    while (pos < selectedBuffer->size) {
+      if (text[pos] == currentChar)
+        numberOfScopes++;
+      if (text[pos] == oposingChar)
+        numberOfScopes--;
+
+      if (text[pos] == oposingChar && numberOfScopes == 0) {
+        break;
+      }
+      pos++;
+    }
+    SetCursorPosition(pos);
+
+  } else if (text[pos] == oposingChar) {
+    while (pos >= 0) {
+      if (text[pos] == oposingChar)
+        numberOfScopes++;
+      if (text[pos] == currentChar)
+        numberOfScopes--;
+
+      if (text[pos] == currentChar && numberOfScopes == 0) {
+        break;
+      }
+      pos--;
+    }
+    SetCursorPosition(pos);
+  }
+}
+
 inline BOOL IsKeyPressed(u32 code) {
   return (GetKeyState(code) >> 15) & 1;
 }
@@ -642,26 +703,20 @@ void HandleTagSearchCommand() {
   char ch = currentCommand[0].ch;
   if (ch == VK_BACK) {
     tagsSearchLen = MaxI32(tagsSearchLen - 1, 0);
+    tagsSearch[tagsSearchLen] = '\0';
   } else if (ch == VK_RETURN) {
     NavigateToFindSearchResult();
     mode = Normal;
     isTagsSearchVisible = 0;
     hasMatchedAnyCommand = 1;
-  } else if (ch == VK_ESCAPE) {
-    mode = Normal;
-    isTagsSearchVisible = 0;
   } else
     tagsSearch[tagsSearchLen++] = ch;
 }
-
 void HandleLocalSearchCommand() {
-  Key key = currentCommand[0];
+  Key key = currentCommand[currentCommandLen];
   char ch = key.ch;
-  if (IsCharCommand(VK_ESCAPE))
-    mode = Normal;
-  if (IsCharCommand(VK_RETURN))
-    mode = Normal;
-  else if (IsCharCommand(VK_BACK)) {
+
+  if (IsCharCommand(VK_BACK)) {
     if (searchLen > 0) {
       searchTerm[--searchLen] = '\0';
       FindEntries(selectedBuffer);
@@ -690,10 +745,6 @@ void HandleLocalSearchCommand() {
 
 void HandleFileSelectionCommand() {
   char firstChar = currentCommand[0].ch;
-  if (firstChar == VK_ESCAPE) {
-    mode = Normal;
-    hasMatchedAnyCommand = 1;
-  }
   if (firstChar >= '1' && firstChar <= '9') {
     char path[512] = {0};
     sprintf(path, "%s%s", rootDir, allFiles[firstChar - '1']);
@@ -705,12 +756,7 @@ void HandleFileSelectionCommand() {
 void HandleInsertCommand() {
   Key key = currentCommand[0];
   char ch = key.ch;
-  if (currentCommandLen >= 1 && currentCommand[currentCommandLen - 1].ch == VK_ESCAPE) {
-    mode = Normal;
-    hasMatchedAnyCommand = 1;
-    if (!isPlayingLastRepeat)
-      lastCommand[lastCommandLen++].ch = ch;
-  } else if (ch == VK_TAB && key.shift)
+  if (ch == VK_TAB && key.shift)
     MoveTextLeft();
   else if (ch == VK_TAB)
     MoveTextRight();
@@ -742,8 +788,6 @@ void HandleInsertCommand() {
   } else if (IsCharCommand(VK_RETURN))
     BreakLineAtCursor(selectedBuffer);
 
-  else if (IsCharCommand(VK_ESCAPE))
-    ClearCommand();
   else if (IsCtrlCharCommand('R')) {
     Change* appliedChange = RedoLastChange(selectedBuffer);
     if (appliedChange && appliedChange->type != Replaced)
@@ -766,11 +810,6 @@ void HandleInsertCommand() {
 
 void HandleVisualAndNormalCommands() {
   char ch = currentCommand[0].ch;
-  if (ch == VK_ESCAPE) {
-    mode = Normal;
-    hasMatchedAnyCommand = 1;
-  }
-
   if (ch == VK_RETURN) {
     BreakLineAtCursor(selectedBuffer);
     hasMatchedAnyCommand = 1;
@@ -780,6 +819,9 @@ void HandleVisualAndNormalCommands() {
   }
   if (IsCommand("j"))
     MoveDown();
+
+  if (IsCommand("%"))
+    MoveToMatchingCharacter();
 
   if (IsCommand("k"))
     MoveUp();
@@ -871,10 +913,6 @@ void HandleNormalCommand() {
     MoveTextRight();
     hasMatchedAnyCommand = 1;
   }
-  if (currentCommandLen >= 1 && currentCommand[currentCommandLen - 1].ch == VK_ESCAPE) {
-    ClearCommand();
-    hasMatchedAnyCommand = 1;
-  }
   if (IsCommand(" m")) {
     int len = 0;
     char output[KB(20)];
@@ -919,6 +957,17 @@ void HandleNormalCommand() {
     FindEntries(selectedBuffer);
   }
 
+  if (IsCtrlCharCommand('J')) {
+    int lineStart = FindLineStart(selectedBuffer, selectedBuffer->cursor);
+    int cursorOffset = selectedBuffer->cursor - lineStart;
+    int currentLineOffset = GetLineOffset(selectedBuffer, lineStart);
+
+    SetCursorPosition(selectedBuffer->cursor + 5);
+  }
+
+  if (IsCtrlCharCommand('K')) {
+    SetCursorPosition(selectedBuffer->cursor - 5);
+  }
   // TODO: these are starting to look like patterns for operation/motion common code
   if (currentCommandLen > 2) {
     char op = currentCommand[0].ch;
@@ -1031,6 +1080,7 @@ void HandleNormalCommand() {
     i32 end = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
     ClipboardCopy(mainWindow, selectedBuffer->content + start, end - start + 1);
   }
+
   if (IsCommand("p")) {
     i32 size = 0;
     char* textFromClipboard = ClipboardPaste(mainWindow, &size);
@@ -1098,6 +1148,8 @@ void HandleNormalCommand() {
   if (IsCommand(" r"))
     RunCode();
 
+  if (IsCommand(" l"))
+    BuildLib();
   if (IsCommand(" e"))
     mode = FileSelection;
 
@@ -1156,7 +1208,13 @@ void AppendCharIntoCommand(Key key) {
   char ch = key.ch;
   visibleCommandLen = 0;
   hasMatchedAnyCommand = 0;
-  if (isTagsSearchVisible)
+  if (key.ch == VK_ESCAPE) {
+    mode = Normal;
+    isTagsSearchVisible = 0;
+    hasMatchedAnyCommand = 1;
+    if (!isPlayingLastRepeat)
+      lastCommand[lastCommandLen++].ch = ch;
+  } else if (isTagsSearchVisible)
     HandleTagSearchCommand();
   else if (mode == LocalSearchTyping)
     HandleLocalSearchCommand();

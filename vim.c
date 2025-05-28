@@ -44,7 +44,7 @@ typedef struct Key {
   int shift;
   int alt;
   char ch;
-  
+
 } Key;
 
 Key lastCommand[KB(2 * 1024)];
@@ -77,6 +77,9 @@ int GetChangeArenaSize(ChangeArena* arena) {
   return res;
 }
 
+//
+// String stuff
+//
 int StrContainsChar(char* str, char ch) {
   while (*str) {
     if (*str == ch)
@@ -103,6 +106,30 @@ int StrEndsWith(char* str, char* seq) {
     return -1;
   char* end = str + len - seqLen;
   return IsStrEqual(end, seq);
+}
+
+inline char ToCharLower(char ch) {
+  if (ch >= 'A' && ch <= 'Z')
+    return ch + ('a' - 'A');
+
+  return ch;
+}
+
+int StrIndexOfCaseInsensitive(char* s, char* sub) {
+  if (!*sub)
+    return 0; // Empty substring matches at index 0
+
+  for (int i = 0; s[i]; ++i) {
+    int j = 0;
+    while (sub[j] && ToCharLower(s[i + j]) == ToCharLower(sub[j])) {
+      ++j;
+    }
+    if (!sub[j]) {
+      return i; // Match found
+    }
+  }
+
+  return -1; // No match
 }
 
 i32 FindLineStart(Buffer* buffer, i32 pos) {
