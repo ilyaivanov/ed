@@ -36,17 +36,14 @@ float scrollbarWidth = 10;
 Rect leftRect;
 Spring leftOffset;
 
-Rect compilationRect;
-Spring compilationOffset;
+Rect bottomRightRect;
+Spring bottomRightOffset;
 
-Rect executionRect;
-Spring executionOffset;
+Rect topRightRect;
+Spring topRightOffset;
 
 Rect middleRect;
 Spring middleOffset;
-
-Rect rightRect;
-Spring rightOffset;
 
 Rect footerRect = {0};
 i32 horizPadding = 20;
@@ -56,17 +53,19 @@ Rect screen = {0};
 
 char* rootDir = ".\\";
 Buffer leftBuffer;
-char* leftFilePath = ".\\misc\\tasks.txt";
+char* leftFilePath = ".\\main.c";
 
 Buffer middleBuffer;
-char* middleFilePath = ".\\str.c";
+char* middleFilePath = ".\\vim.c";
 
+int isCompilationShown = 0;
 Buffer compilationOutputBuffer;
 Buffer rightBuffer;
-char* rightFilePath = ".\\vim.c";
+char* rightFilePath = ".\\misc\\tasks.txt";
 
-char* allFiles[] = {"main.c",   "font.c", "anim.c",  "math.c",         "tags",
-                    "search.c", "vim.c",  "win32.c", "misc\\build.bat"};
+char* allFiles[] = {"main.c",  "font.c",          "anim.c",
+                    "lib.c",   "search.c",        "vim.c",
+                    "win32.c", "misc\\build.bat", "misc\\buildLib.bat"};
 
 typedef enum EdFile { Left, Middle, CompilationResults, Right } EdFile;
 
@@ -112,25 +111,21 @@ void OnLayout() {
   footerRect.height = footerHeight;
   footerRect.y = screen.height - footerRect.height;
 
-  compilationRect.width = leftRect.width = 70 * font.charWidth;
-  compilationRect.height = 800;
+  leftRect.height = canvas.height - footerHeight;
+  leftRect.width = canvas.width / 3;
 
-  leftRect.height = canvas.height - compilationRect.height - footerRect.height;
-  compilationRect.y = leftRect.height;
-
-  i32 codeWidth = (screen.width - leftRect.width);
   middleRect.x = leftRect.width;
-  if (isRightBufferVisible) {
-    middleRect.width = codeWidth / 2;
-    rightRect.width = screen.width - (leftRect.width + middleRect.width);
-  } else {
-    middleRect.width = canvas.width - leftRect.width;
-  }
+  middleRect.width = canvas.width / 3;
+  middleRect.height = screen.height - footerHeight;
 
-  middleRect.height = canvas.height - footerRect.height;
+  Rect rightRect;
+  rightRect.width = canvas.width / 3;
+  rightRect.height = canvas.height - footerHeight;
 
-  rightRect.x = middleRect.x + middleRect.width;
-  rightRect.height = canvas.height - footerRect.height;
+  bottomRightRect.width = topRightRect.width = rightRect.width;
+  bottomRightRect.height = topRightRect.height = rightRect.height / 2;
+  bottomRightRect.x = topRightRect.x = middleRect.x + middleRect.width;
+  bottomRightRect.y = topRightRect.height;
 }
 
 typedef struct CursorPos {
@@ -528,6 +523,7 @@ void NavigateToError(int pos) {
 }
 
 void RunCode() {
+  isCompilationShown = 1;
   SaveSelectedFile();
   char* cmd = "cmd /c .\\misc\\build.bat";
   int len = 0;
@@ -1139,8 +1135,10 @@ void HandleNormalCommand() {
     SelectBuffer(&leftBuffer, &leftOffset, &leftRect);
   if (IsAltCharCommand('2'))
     SelectBuffer(&middleBuffer, &middleOffset, &middleRect);
-  if (IsAltCharCommand('3'))
-    SelectBuffer(&rightBuffer, &rightOffset, &rightRect);
+  if (IsAltCharCommand('3')) {
+    isCompilationShown = 0;
+    SelectBuffer(&rightBuffer, &bottomRightOffset, &bottomRightRect);
+  }
   if (IsCtrlCharCommand('S'))
     SaveSelectedFile();
   if (IsCtrlCharCommand(VK_OEM_PLUS)) {
@@ -1588,15 +1586,16 @@ void Draw() {
   u32 borderColor = 0x222222;
   RectFillRightBorder(leftRect, 4, borderColor);
   RectFillRightBorder(middleRect, 4, borderColor);
-  RectFillRightBorder(rightRect, 4, borderColor);
-
-  RectFillRightBorder(compilationRect, 4, borderColor);
-  RectFillTopBorder(compilationRect, 4, borderColor);
+  RectFillTopBorder(bottomRightRect, 4, borderColor);
 
   DrawArea(leftRect, &leftBuffer, &leftOffset);
   DrawArea(middleRect, &middleBuffer, &middleOffset);
-  DrawArea(rightRect, &rightBuffer, &rightOffset);
-  DrawArea(compilationRect, &compilationOutputBuffer, &compilationOffset);
+  if (isCompilationShown)
+    DrawArea(bottomRightRect, &compilationOutputBuffer, &bottomRightOffset);
+  else
+    DrawArea(bottomRightRect, &rightBuffer, &bottomRightOffset);
+
+  PaintRect(topRightRect.x, topRightRect.y, topRightRect.width, topRightRect.height, 0x222288);
 
   DrawFooter();
   if (isTagsSearchVisible)
@@ -1660,7 +1659,7 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
     float deltaSec = deltaMs / 1000.0f;
     UpdateSpring(&leftOffset, deltaSec);
     UpdateSpring(&middleOffset, deltaSec);
-    UpdateSpring(&rightOffset, deltaSec);
+    // UpdateSpring(&rightOffset, deltaSec);
     appTimeMs += deltaMs;
     startCounter = endCounter;
   }
