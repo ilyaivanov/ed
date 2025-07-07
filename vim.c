@@ -315,7 +315,7 @@ void CopyStrIntoBuffer(Buffer* buffer, char* str, int size) {
 }
 
 Buffer ReadFileIntoDoubledSizedBuffer(char* path) {
-  u32 fileSize = GetMyFileSize(path);
+  i64 fileSize = GetMyFileSize(path);
   char* file = VirtualAllocateMemory(fileSize);
   ReadFileInto(path, fileSize, file);
 

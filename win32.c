@@ -125,7 +125,7 @@ inline f32 lerp(f32 from, f32 to, f32 factor) {
 i64 GetMyFileSize(char* path) {
   HANDLE file = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
 
-  LARGE_INTEGER size;
+  LARGE_INTEGER size = {0};
   GetFileSizeEx(file, &size);
 
   CloseHandle(file);

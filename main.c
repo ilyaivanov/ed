@@ -1,12 +1,16 @@
+#define _CRT_SECURE_NO_WARNINGS
 #include "anim.c"
 #include "font.c"
 #include "math.c"
 #include "search.c"
 #include "vim.c"
 #include "win32.c"
+#include <dbghelp.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+// #pragma comment(lib, "dbghelp.lib")
 
 int isRightBufferVisible = 1;
 HWND mainWindow;
@@ -51,35 +55,43 @@ i32 vertPadding = 10;
 i32 footerPadding = 2;
 Rect screen = {0};
 
-char* rootDir = ".\\";
+char *rootDir = ".\\";
 Buffer leftBuffer;
-char* leftFilePath = ".\\main.c";
+char *leftFilePath = ".\\main.c";
 
 Buffer middleBuffer;
-char* middleFilePath = ".\\vim.c";
+char *middleFilePath = ".\\vim.c";
 
 int isCompilationShown = 0;
 Buffer compilationOutputBuffer;
 Buffer rightBuffer;
-char* rightFilePath = ".\\misc\\tasks.txt";
+char *rightFilePath = ".\\misc\\tasks.txt";
 
-char* allFiles[] = {"main.c",  "font.c",          "anim.c",
-                    "lib.c",   "search.c",        "vim.c",
+char *allFiles[] = {"main.c", "font.c", "anim.c",
+                    "lib.c", "search.c", "vim.c",
                     "win32.c", "misc\\build.bat", "misc\\buildLib.bat"};
 
-typedef enum EdFile { Left, Middle, CompilationResults, Right } EdFile;
+typedef enum EdFile
+{
+  Left,
+  Middle,
+  CompilationResults,
+  Right
+} EdFile;
 
-Buffer* selectedBuffer;
-Spring* selectedOffset;
-Rect* selectedRect;
+Buffer *selectedBuffer;
+Spring *selectedOffset;
+Rect *selectedRect;
 
-void SelectBuffer(Buffer* buffer, Spring* offset, Rect* rect) {
+void SelectBuffer(Buffer *buffer, Spring *offset, Rect *rect)
+{
   selectedBuffer = buffer;
   selectedOffset = offset;
   selectedRect = rect;
 }
 
-typedef enum Mode {
+typedef enum Mode
+{
   Normal,
   Insert,
   ReplaceChar,
@@ -102,9 +114,10 @@ Arena fontArena;
 i32 lineHeightPx;
 f32 lineHeight = 1.1;
 i32 fontSize = 14;
-char* fontName = "Consolas";
+char *fontName = "Consolas";
 
-void OnLayout() {
+void OnLayout()
+{
   int footerHeight = font.charHeight + footerPadding * 2;
   lineHeightPx = RoundI32((f32)font.charHeight * lineHeight);
   footerRect.width = screen.width;
@@ -128,27 +141,32 @@ void OnLayout() {
   bottomRightRect.y = topRightRect.height;
 }
 
-typedef struct CursorPos {
+typedef struct CursorPos
+{
   i32 global;
 
   i32 line;
   i32 lineOffset;
 } CursorPos;
 
-CursorPos GetPositionOffset(Buffer* buffer, i32 pos) {
+CursorPos GetPositionOffset(Buffer *buffer, i32 pos)
+{
   CursorPos res = {0};
   res.global = -1;
 
   i32 textSize = buffer->size;
-  char* text = buffer->content;
+  char *text = buffer->content;
 
-  if (pos >= 0 && pos <= textSize) {
+  if (pos >= 0 && pos <= textSize)
+  {
     res.global = pos;
     res.line = 0;
 
     i32 lineStartedAt = 0;
-    for (i32 i = 0; i < pos; i++) {
-      if (text[i] == '\n') {
+    for (i32 i = 0; i < pos; i++)
+    {
+      if (text[i] == '\n')
+      {
         res.line++;
         lineStartedAt = i + 1;
       }
@@ -158,21 +176,25 @@ CursorPos GetPositionOffset(Buffer* buffer, i32 pos) {
   }
   return res;
 }
-CursorPos GetCursorPosition(Buffer* buffer) {
+CursorPos GetCursorPosition(Buffer *buffer)
+{
   return GetPositionOffset(buffer, buffer->cursor);
 }
 
-i32 GetPageHeight(Buffer* buffer) {
+i32 GetPageHeight(Buffer *buffer)
+{
   int rows = 1;
-  for (i32 i = 0; i < buffer->size; i++) {
+  for (i32 i = 0; i < buffer->size; i++)
+  {
     if (buffer->content[i] == '\n')
       rows++;
   }
   return rows * lineHeightPx;
 }
 
-int GetMatchingCharIndex() {
-  char* text = selectedBuffer->content;
+int GetMatchingCharIndex()
+{
+  char *text = selectedBuffer->content;
   int pos = selectedBuffer->cursor;
 
   char currentChar = text[pos];
@@ -201,27 +223,34 @@ int GetMatchingCharIndex() {
   int isGoingForwards = currentChar == '(' || currentChar == '{' || currentChar == '[';
 
   int numberOfScopes = 0;
-  if (isGoingForwards) {
-    while (pos < selectedBuffer->size) {
+  if (isGoingForwards)
+  {
+    while (pos < selectedBuffer->size)
+    {
       if (text[pos] == currentChar)
         numberOfScopes++;
       if (text[pos] == oposingChar)
         numberOfScopes--;
 
-      if (text[pos] == oposingChar && numberOfScopes == 0) {
+      if (text[pos] == oposingChar && numberOfScopes == 0)
+      {
         break;
       }
       pos++;
     }
     return pos;
-  } else {
-    while (pos >= 0) {
+  }
+  else
+  {
+    while (pos >= 0)
+    {
       if (text[pos] == oposingChar)
         numberOfScopes++;
       if (text[pos] == currentChar)
         numberOfScopes--;
 
-      if (text[pos] == oposingChar && numberOfScopes == 0) {
+      if (text[pos] == oposingChar && numberOfScopes == 0)
+      {
         break;
       }
       pos--;
@@ -231,7 +260,8 @@ int GetMatchingCharIndex() {
   return -1;
 }
 
-void SetCursorPosition(i32 v) {
+void SetCursorPosition(i32 v)
+{
   if (v < 0)
     return;
   selectedBuffer->cursor = Clampi32(v, 0, selectedBuffer->size - 1);
@@ -247,12 +277,14 @@ void SetCursorPosition(i32 v) {
     selectedOffset->target = Clamp(cursorPos - (float)selectedRect->height / 2.0f, 0, maxScroll);
 }
 
-void SaveSelectedFile() {
+void SaveSelectedFile()
+{
   WriteMyFile(selectedBuffer->filePath, selectedBuffer->content, selectedBuffer->size);
   selectedBuffer->isSaved = 1;
 }
 
-void LoadFileIntoSelectedBuffer(char* path) {
+void LoadFileIntoSelectedBuffer(char *path)
+{
   SaveSelectedFile();
   VirtualFreeMemory(selectedBuffer->content);
   VirtualFreeMemory(selectedBuffer->changeArena.contents);
@@ -262,19 +294,25 @@ void LoadFileIntoSelectedBuffer(char* path) {
   selectedOffset->target = selectedOffset->current = 0;
 }
 
-void FocusOnEntry(int index) {
+void FocusOnEntry(int index)
+{
   SetCursorPosition(entriesAt[index].at);
   currentEntry = index;
 }
 
-void FindClosestMatch() {
-  if (entriesCount > 0) {
+void FindClosestMatch()
+{
+  if (entriesCount > 0)
+  {
     if (selectedBuffer->cursor < entriesAt[0].at)
       FocusOnEntry(0);
-    else {
-      for (int i = 1; i < entriesCount; i++) {
+    else
+    {
+      for (int i = 1; i < entriesCount; i++)
+      {
         if (entriesAt[i - 1].at < selectedBuffer->cursor &&
-            entriesAt[i].at >= selectedBuffer->cursor) {
+            entriesAt[i].at >= selectedBuffer->cursor)
+        {
           FocusOnEntry(i);
           return;
         }
@@ -284,14 +322,19 @@ void FindClosestMatch() {
   }
 }
 
-void MoveNextOnSearch() {
-  if (entriesCount > 0) {
+void MoveNextOnSearch()
+{
+  if (entriesCount > 0)
+  {
     if (selectedBuffer->cursor < entriesAt[0].at)
       FocusOnEntry(0);
-    else {
-      for (int i = 1; i < entriesCount; i++) {
+    else
+    {
+      for (int i = 1; i < entriesCount; i++)
+      {
         if (entriesAt[i - 1].at <= selectedBuffer->cursor &&
-            entriesAt[i].at > selectedBuffer->cursor) {
+            entriesAt[i].at > selectedBuffer->cursor)
+        {
           FocusOnEntry(i);
           return;
         }
@@ -301,14 +344,19 @@ void MoveNextOnSearch() {
   }
 }
 
-void MovePrevOnSearch() {
-  if (entriesCount > 0) {
+void MovePrevOnSearch()
+{
+  if (entriesCount > 0)
+  {
     if (selectedBuffer->cursor < entriesAt[0].at)
       FocusOnEntry(entriesCount - 1);
-    else {
-      for (int i = 1; i < entriesCount; i++) {
+    else
+    {
+      for (int i = 1; i < entriesCount; i++)
+      {
         if (entriesAt[i - 1].at < selectedBuffer->cursor &&
-            entriesAt[i].at >= selectedBuffer->cursor) {
+            entriesAt[i].at >= selectedBuffer->cursor)
+        {
           FocusOnEntry(i - 1);
           return;
         }
@@ -318,22 +366,26 @@ void MovePrevOnSearch() {
   }
 }
 
-void StartSearch() {
+void StartSearch()
+{
   isSearchVisible = 1;
   FindEntries(selectedBuffer);
 
   FindClosestMatch();
 }
 
-typedef struct SelectionRange {
+typedef struct SelectionRange
+{
   i32 left;
   i32 right;
 } SelectionRange;
 
-SelectionRange GetSelectionRange() {
+SelectionRange GetSelectionRange()
+{
   i32 selectionLeft = MinI32(selectedBuffer->selectionStart, selectedBuffer->cursor);
   i32 selectionRight = MaxI32(selectedBuffer->selectionStart, selectedBuffer->cursor);
-  if (mode == VisualLine) {
+  if (mode == VisualLine)
+  {
     selectionLeft = FindLineStart(selectedBuffer, selectionLeft);
     selectionRight = FindLineEnd(selectedBuffer, selectionRight);
   }
@@ -344,12 +396,14 @@ SelectionRange GetSelectionRange() {
   return res;
 }
 
-void ResetAppFonts() {
+void ResetAppFonts()
+{
   InitFont(&font, fontName, fontSize, &fontArena);
   OnLayout();
 }
 
-void CenterViewOnCursor() {
+void CenterViewOnCursor()
+{
 
   CursorPos cursor = GetCursorPosition(selectedBuffer);
   float cursorPos = cursor.line * lineHeightPx;
@@ -357,18 +411,22 @@ void CenterViewOnCursor() {
   selectedOffset->target = cursorPos - (float)selectedRect->height / 2.0f;
 }
 
-void MoveDown() {
+void MoveDown()
+{
   i32 next = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
-  if (next != selectedBuffer->size) {
+  if (next != selectedBuffer->size)
+  {
     i32 nextNextLine = FindLineEnd(selectedBuffer, next + 1);
     CursorPos cursor = GetCursorPosition(selectedBuffer);
     SetCursorPosition(MinI32(next + cursor.lineOffset + 1, nextNextLine));
   }
 }
 
-void MoveUp() {
+void MoveUp()
+{
   i32 prev = FindLineStart(selectedBuffer, selectedBuffer->cursor);
-  if (prev != 0) {
+  if (prev != 0)
+  {
     i32 prevPrevLine = FindLineStart(selectedBuffer, prev - 1);
     CursorPos cursor = GetCursorPosition(selectedBuffer);
     i32 pos = prevPrevLine + cursor.lineOffset;
@@ -377,27 +435,30 @@ void MoveUp() {
   }
 }
 
-void RemoveCurrentChar() {
-  if (selectedBuffer->cursor > 0) {
+void RemoveCurrentChar()
+{
+  if (selectedBuffer->cursor > 0)
+  {
     RemoveChar(selectedBuffer, selectedBuffer->cursor - 1);
     selectedBuffer->cursor--;
   }
 }
 
-void FormatSelectedFile() {
+void FormatSelectedFile()
+{
 
   SaveSelectedFile();
-  char* style = "--style=\"{AllowShortFunctionsOnASingleLine : \"Empty\", "
+  char *style = "--style=\"{AllowShortFunctionsOnASingleLine : \"Empty\", "
                 "ColumnLimit: 100, PointerAlignment: \"Left\"}\"";
   char cmd[512] = {0};
   sprintf(cmd, "cmd /c clang-format %s -cursor=%d %s", style, selectedBuffer->cursor,
           selectedBuffer->filePath);
 
   i32 len = 0;
-  char* output = VirtualAllocateMemory(selectedBuffer->size + 200);
+  char *output = VirtualAllocateMemory(selectedBuffer->size + 200);
   RunCommand(cmd, output, &len);
 
-  char* nextTextStart = output;
+  char *nextTextStart = output;
   while (*nextTextStart != '\n')
     nextTextStart++;
   nextTextStart++;
@@ -413,20 +474,23 @@ void FormatSelectedFile() {
   selectedBuffer->cursor = newCursor;
   VirtualFreeMemory(output);
 }
-typedef struct Res {
+typedef struct Res
+{
   char filename[256];
   int filenameLen;
   int line;
   int offset;
 } Res;
 
-int TryParse(char* line, Res* res) {
-  char* p = line;
+int TryParse(char *line, Res *res)
+{
+  char *p = line;
 
   if (*p && *p == '.' && *(p + 1) && *(p + 1) == '\\')
     p += 2;
 
-  while (*p && *p >= 'a' && *p <= 'z') {
+  while (*p && *p >= 'a' && *p <= 'z')
+  {
     res->filename[res->filenameLen++] = *p;
     p++;
   }
@@ -452,7 +516,8 @@ int TryParse(char* line, Res* res) {
   int val = 0;
   if (*p < '0' || *p > '9')
     return 0; // expect digit
-  while (*p >= '0' && *p <= '9') {
+  while (*p >= '0' && *p <= '9')
+  {
     val = val * 10 + (*p - '0');
     p++;
   }
@@ -466,7 +531,8 @@ int TryParse(char* line, Res* res) {
   val = 0;
   if (*p < '0' || *p > '9')
     return 0; // expect digit
-  while (*p >= '0' && *p <= '9') {
+  while (*p >= '0' && *p <= '9')
+  {
     val = val * 10 + (*p - '0');
     p++;
   }
@@ -476,14 +542,17 @@ int TryParse(char* line, Res* res) {
 }
 
 Res res[10];
-void Parse() {
+void Parse()
+{
   int isStartOfLine = 1;
   int line = 0;
   int errorCount = 0;
-  Buffer* buf = &compilationOutputBuffer;
-  for (int i = 0; i < buf->size; i++) {
+  Buffer *buf = &compilationOutputBuffer;
+  for (int i = 0; i < buf->size; i++)
+  {
     char ch = buf->content[i];
-    if (isStartOfLine && errorCount < 9) {
+    if (isStartOfLine && errorCount < 9)
+    {
       Res r = {0};
       if (TryParse(buf->content + i, &r))
         res[errorCount++] = r;
@@ -491,14 +560,16 @@ void Parse() {
       isStartOfLine = 0;
     }
     //
-    if (ch == '\n') {
+    if (ch == '\n')
+    {
       isStartOfLine = 1;
       line++;
     }
   }
 }
 
-void NavigateToError(int pos) {
+void NavigateToError(int pos)
+{
   Res r = res[pos];
   char fullPath[256] = {0};
   sprintf(fullPath, "%s%s", rootDir, r.filename);
@@ -510,10 +581,13 @@ void NavigateToError(int pos) {
   int line = 1;
   if (desiredLine == 0)
     SetCursorPosition(0);
-  for (int i = 0; i < selectedBuffer->size; i++) {
-    if (selectedBuffer->content[i] == '\n') {
+  for (int i = 0; i < selectedBuffer->size; i++)
+  {
+    if (selectedBuffer->content[i] == '\n')
+    {
       line++;
-      if (line == desiredLine) {
+      if (line == desiredLine)
+      {
         SetCursorPosition(i + r.offset);
 
         break;
@@ -522,10 +596,12 @@ void NavigateToError(int pos) {
   }
 }
 
-void RunCode() {
+void RunCode()
+{
   isCompilationShown = 1;
+
   SaveSelectedFile();
-  char* cmd = "cmd /c .\\misc\\build.bat";
+  char *cmd = "cmd /c .\\misc\\build.bat";
   int len = 0;
   char output[KB(20)];
   RunCommand(cmd, output, &len);
@@ -534,43 +610,35 @@ void RunCode() {
   Parse();
 }
 
-void BuildLib() {
-  SaveSelectedFile();
-  char* cmd = "cmd /c .\\misc\\build.bat";
-  int len = 0;
-  char output[KB(20)];
-
-  char* s = "Hello there\n";
-  memmove(output, s, strlen(s));
-  len = strlen(s);
-  // RunCommand(cmd, output, &len);
-  CopyStrIntoBuffer(&compilationOutputBuffer, output, len);
-  OnLayout();
-  Parse();
-}
-
-void MoveToMatchingCharacter() {
+void MoveToMatchingCharacter()
+{
   int matchingIndex = GetMatchingCharIndex();
   if (matchingIndex >= 0)
     SetCursorPosition(matchingIndex);
 }
 
-inline BOOL IsKeyPressed(u32 code) {
+inline BOOL IsKeyPressed(u32 code)
+{
   return (GetKeyState(code) >> 15) & 1;
 }
-void MoveLeft() {
+void MoveLeft()
+{
   SetCursorPosition(selectedBuffer->cursor - 1);
 }
-void MoveRight() {
+void MoveRight()
+{
   SetCursorPosition(selectedBuffer->cursor + 1);
 }
 
 i32 hasMatchedAnyCommand;
 
-i32 IsCommand(char* str) {
+i32 IsCommand(char *str)
+{
   i32 len = strlen(str);
-  if (currentCommandLen == len) {
-    for (i32 i = 0; i < len; i++) {
+  if (currentCommandLen == len)
+  {
+    for (i32 i = 0; i < len; i++)
+    {
       if (currentCommand[i].ch != str[i])
         return 0;
     }
@@ -580,55 +648,69 @@ i32 IsCommand(char* str) {
   return 0;
 }
 
-i32 IsCharCommand(char ch) {
-  if (currentCommandLen == 1 && currentCommand[0].ch == ch) {
+i32 IsCharCommand(char ch)
+{
+  if (currentCommandLen == 1 && currentCommand[0].ch == ch)
+  {
     hasMatchedAnyCommand = 1;
     return 1;
   }
   return 0;
 }
 
-i32 IsCtrlCharCommand(char ch) {
-  if (currentCommandLen == 1 && currentCommand[0].ch == ch && currentCommand[0].ctrl) {
+i32 IsCtrlCharCommand(char ch)
+{
+  if (currentCommandLen == 1 && currentCommand[0].ch == ch && currentCommand[0].ctrl)
+  {
     hasMatchedAnyCommand = 1;
     return 1;
   }
   return 0;
 }
 
-i32 IsShiftCharCommand(char ch) {
-  if (currentCommandLen == 1 && currentCommand[0].ch == ch && currentCommand[0].shift) {
+i32 IsShiftCharCommand(char ch)
+{
+  if (currentCommandLen == 1 && currentCommand[0].ch == ch && currentCommand[0].shift)
+  {
     hasMatchedAnyCommand = 1;
     return 1;
   }
   return 0;
 }
 
-i32 IsAltCharCommand(char ch) {
-  if (currentCommandLen == 1 && currentCommand[0].ch == ch && currentCommand[0].alt) {
+i32 IsAltCharCommand(char ch)
+{
+  if (currentCommandLen == 1 && currentCommand[0].ch == ch && currentCommand[0].alt)
+  {
     hasMatchedAnyCommand = 1;
     return 1;
   }
   return 0;
 }
-void ClearCommand() {
+void ClearCommand()
+{
   visibleCommandLen = currentCommandLen;
   currentCommandLen = 0;
 }
 
 int isPlayingLastRepeat = 0;
-void SaveCommand() {
-  if (!isPlayingLastRepeat) {
+void SaveCommand()
+{
+  if (!isPlayingLastRepeat)
+  {
     memmove(lastCommand, currentCommand, currentCommandLen * sizeof(Key));
     lastCommandLen = currentCommandLen;
   }
 }
-void MoveTextRight() {
-  if (mode == Visual || mode == VisualLine) {
+void MoveTextRight()
+{
+  if (mode == Visual || mode == VisualLine)
+  {
     SelectionRange range = GetSelectionRange();
     int pos = FindLineStart(selectedBuffer, range.left);
     int charsAdded = 0;
-    while (pos < range.right) {
+    while (pos < range.right)
+    {
       InsertCharAt(selectedBuffer, pos, ' ');
       InsertCharAt(selectedBuffer, pos, ' ');
       charsAdded += 2;
@@ -638,7 +720,9 @@ void MoveTextRight() {
       selectedBuffer->cursor += charsAdded;
     else
       selectedBuffer->selectionStart += charsAdded;
-  } else {
+  }
+  else
+  {
     int start = FindLineStart(selectedBuffer, selectedBuffer->cursor);
     InsertCharAt(selectedBuffer, start, ' ');
     InsertCharAt(selectedBuffer, start, ' ');
@@ -646,15 +730,19 @@ void MoveTextRight() {
   }
 }
 
-void MoveTextLeft() {
-  char* text = selectedBuffer->content;
-  if (mode == Visual || mode == VisualLine) {
+void MoveTextLeft()
+{
+  char *text = selectedBuffer->content;
+  if (mode == Visual || mode == VisualLine)
+  {
     SelectionRange range = GetSelectionRange();
     int pos = FindLineStart(selectedBuffer, range.left);
     int charsRemoved = 0;
     int charsRemovedOnLine = 0;
-    while (pos < range.right) {
-      while (text[pos] == ' ' && charsRemovedOnLine < 2) {
+    while (pos < range.right)
+    {
+      while (text[pos] == ' ' && charsRemovedOnLine < 2)
+      {
         RemoveChar(selectedBuffer, pos);
         charsRemoved += 1;
         charsRemovedOnLine += 1;
@@ -666,11 +754,13 @@ void MoveTextLeft() {
       selectedBuffer->cursor -= charsRemoved;
     else
       selectedBuffer->selectionStart -= charsRemoved;
-
-  } else {
+  }
+  else
+  {
     int start = FindLineStart(selectedBuffer, selectedBuffer->cursor);
     int charsRemoved = 0;
-    while (text[start] == ' ' && charsRemoved < 2) {
+    while (text[start] == ' ' && charsRemoved < 2)
+    {
       charsRemoved++;
       RemoveChar(selectedBuffer, start);
     }
@@ -678,15 +768,19 @@ void MoveTextLeft() {
   }
 }
 
-int StrIndexOf(char* text, int size, char* substr) {
+int StrIndexOf(char *text, int size, char *substr)
+{
   int pos = 0;
   int matchedChar = 0;
   int len = strlen(substr);
 
-  while (pos < size) {
-    while (text[pos + matchedChar] == substr[matchedChar]) {
+  while (pos < size)
+  {
+    while (text[pos + matchedChar] == substr[matchedChar])
+    {
       matchedChar++;
-      if (matchedChar == len) {
+      if (matchedChar == len)
+      {
         return pos;
       }
     }
@@ -696,14 +790,17 @@ int StrIndexOf(char* text, int size, char* substr) {
   return -1;
 }
 
-void NavigateToFindSearchResult() {
-  CtagEntry* entry = found[0];
-  if (entry && *entry->filename != '\0') {
+void NavigateToFindSearchResult()
+{
+  CtagEntry *entry = found[0];
+  if (entry && *entry->filename != '\0')
+  {
     char path[512] = {0};
     sprintf(path, "%s%s", rootDir, entry->filename);
 
     // todo; check if other split has this filename loaded
-    if (!IsStrEqual(path, selectedBuffer->filePath)) {
+    if (!IsStrEqual(path, selectedBuffer->filePath))
+    {
       LoadFileIntoSelectedBuffer(path);
     }
     int i = StrIndexOf(selectedBuffer->content, selectedBuffer->size, entry->pattern);
@@ -712,40 +809,92 @@ void NavigateToFindSearchResult() {
   }
 }
 
-void HandleTagSearchCommand() {
+typedef void RenderApp(MyBitmap *canvas, Rect *rect);
+HMODULE libModule;
+RenderApp *render;
+void LoadLib()
+{
+  libModule = LoadLibrary("mylib.dll");
+  if (libModule)
+  {
+    render = (RenderApp *)GetProcAddress(libModule, "RenderApp");
+  }
+}
+i32 isErroed = 0;
+
+void BuildLib()
+{
+  isErroed = 0;
+  i64 start = GetPerfCounter();
+  if (libModule)
+  {
+    FreeLibrary(libModule);
+    render = 0;
+  }
+  // Sleep(20);
+
+  isCompilationShown = 1;
+
+  SaveSelectedFile();
+  char *cmd = "cmd /c .\\misc\\buildLib.bat";
+  int len = 0;
+  char output[KB(20)];
+  RunCommand(cmd, output, &len);
+
+  LoadLib();
+  i64 end = GetPerfCounter();
+  len += sprintf(&output[len], "\n%0.0fms", (f64)(end - start) / (f64)GetPerfFrequency() * 1000.0);
+
+  CopyStrIntoBuffer(&compilationOutputBuffer, output, len);
+  OnLayout();
+  Parse();
+}
+
+void HandleTagSearchCommand()
+{
   hasMatchedAnyCommand = 1;
   char ch = currentCommand[0].ch;
-  if (ch == VK_BACK) {
+  if (ch == VK_BACK)
+  {
     tagsSearchLen = MaxI32(tagsSearchLen - 1, 0);
     tagsSearch[tagsSearchLen] = '\0';
-  } else if (ch == VK_RETURN) {
+  }
+  else if (ch == VK_RETURN)
+  {
     NavigateToFindSearchResult();
     mode = Normal;
     isTagsSearchVisible = 0;
     hasMatchedAnyCommand = 1;
-  } else {
+  }
+  else
+  {
     tagsSearch[tagsSearchLen++] = ch;
     tagsSearch[tagsSearchLen] = '\0';
   }
 }
-void HandleLocalSearchCommand() {
+void HandleLocalSearchCommand()
+{
   Key key = currentCommand[currentCommandLen];
   char ch = key.ch;
 
-  if (IsCharCommand(VK_BACK)) {
-    if (searchLen > 0) {
+  if (IsCharCommand(VK_BACK))
+  {
+    if (searchLen > 0)
+    {
       searchTerm[--searchLen] = '\0';
       FindEntries(selectedBuffer);
     }
   }
-  if (IsCtrlCharCommand('W')) {
+  if (IsCtrlCharCommand('W'))
+  {
     searchLen = MaxI32(searchLen - 1, 0);
     while (searchTerm[searchLen] != ' ' || searchLen == 0)
       searchLen--;
     searchTerm[searchLen] = '\0';
     FindEntries(selectedBuffer);
   }
-  if (IsCtrlCharCommand('U')) {
+  if (IsCtrlCharCommand('U'))
+  {
     searchLen = 0;
     searchTerm[searchLen] = '\0';
     FindEntries(selectedBuffer);
@@ -757,9 +906,11 @@ void HandleLocalSearchCommand() {
     MovePrevOnSearch();
 }
 
-void HandleFileSelectionCommand() {
+void HandleFileSelectionCommand()
+{
   char firstChar = currentCommand[0].ch;
-  if (firstChar >= '1' && firstChar <= '9') {
+  if (firstChar >= '1' && firstChar <= '9')
+  {
     char path[512] = {0};
     sprintf(path, "%s%s", rootDir, allFiles[firstChar - '1']);
     LoadFileIntoSelectedBuffer(path);
@@ -767,7 +918,8 @@ void HandleFileSelectionCommand() {
   }
 }
 
-void HandleInsertCommand() {
+void HandleInsertCommand()
+{
   Key key = currentCommand[0];
   char ch = key.ch;
   if (IsShiftCharCommand(VK_TAB))
@@ -776,20 +928,23 @@ void HandleInsertCommand() {
     MoveTextRight();
   else if (IsCharCommand(VK_BACK))
     RemoveCurrentChar();
-  else if (IsCtrlCharCommand('W')) {
+  else if (IsCtrlCharCommand('W'))
+  {
     int pos = MaxI32(selectedBuffer->cursor - 2, 0);
-    char* text = selectedBuffer->content;
+    char *text = selectedBuffer->content;
 
     while (pos > 0 && text[pos] != ' ' && text[pos] != '\n')
       pos--;
     if (text[pos] == '\n')
       pos++;
-    if (pos != (selectedBuffer->cursor - 1)) {
+    if (pos != (selectedBuffer->cursor - 1))
+    {
       RemoveChars(selectedBuffer, pos, selectedBuffer->cursor - 1);
       SetCursorPosition(pos);
       FindEntries(selectedBuffer);
 
-      if (!isPlayingLastRepeat) {
+      if (!isPlayingLastRepeat)
+      {
         lastCommand[lastCommandLen].ctrl = 1;
         lastCommand[lastCommandLen++].ch = ch;
       }
@@ -801,7 +956,8 @@ void HandleInsertCommand() {
   else if (IsCharCommand(VK_RETURN))
     BreakLineAtCursor(selectedBuffer);
 
-  else if (ch < MAX_CHAR_CODE && ch >= ' ' && !key.ctrl && !key.alt) {
+  else if (ch < MAX_CHAR_CODE && ch >= ' ' && !key.ctrl && !key.alt)
+  {
     InsertCharAtCursor(selectedBuffer, ch);
 
     hasMatchedAnyCommand = 1;
@@ -812,12 +968,16 @@ void HandleInsertCommand() {
   }
 }
 
-void HandleVisualAndNormalCommands() {
+void HandleVisualAndNormalCommands()
+{
   char ch = currentCommand[0].ch;
-  if (ch == VK_RETURN) {
+  if (ch == VK_RETURN)
+  {
     BreakLineAtCursor(selectedBuffer);
     hasMatchedAnyCommand = 1;
-  } else if (ch == VK_BACK) {
+  }
+  else if (ch == VK_BACK)
+  {
     RemoveCurrentChar();
     hasMatchedAnyCommand = 1;
   }
@@ -845,13 +1005,15 @@ void HandleVisualAndNormalCommands() {
   if (IsCommand("W"))
     SetCursorPosition(JumpWordWithPunctuationForward(selectedBuffer));
 
-  if (currentCommandLen == 2 && currentCommand[0].ch == 'f') {
+  if (currentCommandLen == 2 && currentCommand[0].ch == 'f')
+  {
     SetCursorPosition(
         FindNextChar(selectedBuffer, selectedBuffer->cursor + 1, currentCommand[1].ch));
     hasMatchedAnyCommand = 1;
   }
 
-  if (currentCommandLen == 2 && currentCommand[0].ch == 't') {
+  if (currentCommandLen == 2 && currentCommand[0].ch == 't')
+  {
     SetCursorPosition(
         FindNextChar(selectedBuffer, selectedBuffer->cursor + 1, currentCommand[1].ch) - 1);
     hasMatchedAnyCommand = 1;
@@ -860,11 +1022,13 @@ void HandleVisualAndNormalCommands() {
   if (IsCommand("B"))
     SetCursorPosition(JumpWordWithPunctuationBackward(selectedBuffer));
 
-  if (IsCommand("gg")) {
+  if (IsCommand("gg"))
+  {
     selectedBuffer->cursor = 0;
     selectedOffset->target = 0;
   }
-  if (IsCommand("G")) {
+  if (IsCommand("G"))
+  {
     selectedBuffer->cursor = selectedBuffer->size - 1;
     selectedOffset->target = (GetPageHeight(selectedBuffer) - selectedRect->height);
   }
@@ -877,47 +1041,59 @@ void HandleVisualAndNormalCommands() {
     CenterViewOnCursor();
 }
 
-void HandleVisualCommand() {
+void HandleVisualCommand()
+{
   Key key = currentCommand[0];
   char ch = key.ch;
   SelectionRange range = GetSelectionRange();
-  if (IsCommand("d")) {
+  if (IsCommand("d"))
+  {
     RemoveChars(selectedBuffer, range.left, range.right);
     selectedBuffer->cursor = MinI32(selectedBuffer->cursor, selectedBuffer->selectionStart);
     mode = Normal;
   }
-  if (IsCommand("o")) {
+  if (IsCommand("o"))
+  {
     i32 temp = selectedBuffer->cursor;
     selectedBuffer->cursor = selectedBuffer->selectionStart;
     selectedBuffer->selectionStart = temp;
   }
-  if (IsCommand("y")) {
+  if (IsCommand("y"))
+  {
     ClipboardCopy(mainWindow, selectedBuffer->content + range.left, range.right - range.left + 1);
     // mode = Normal;
   }
 
-  if (ch == VK_TAB && key.shift) {
+  if (ch == VK_TAB && key.shift)
+  {
     MoveTextLeft();
     hasMatchedAnyCommand = 1;
-  } else if (ch == VK_TAB) {
+  }
+  else if (ch == VK_TAB)
+  {
     MoveTextRight();
     hasMatchedAnyCommand = 1;
   }
 }
 
-void HandleNormalCommand() {
+void HandleNormalCommand()
+{
   Key key = currentCommand[0];
   char ch = key.ch;
   if (IsCommand("r"))
     mode = ReplaceChar;
-  else if (ch == VK_TAB && key.shift) {
+  else if (ch == VK_TAB && key.shift)
+  {
     MoveTextLeft();
     hasMatchedAnyCommand = 1;
-  } else if (ch == VK_TAB) {
+  }
+  else if (ch == VK_TAB)
+  {
     MoveTextRight();
     hasMatchedAnyCommand = 1;
   }
-  if (IsCommand(" m")) {
+  if (IsCommand(" m"))
+  {
     int len = 0;
     char output[KB(20)];
     RunCommand("ctags --fields=+ne *", output, &len);
@@ -925,7 +1101,8 @@ void HandleNormalCommand() {
     ReadCtagsFile();
     isTagsSearchVisible = !isTagsSearchVisible;
   }
-  if (IsCommand("dl") || IsCommand("dd")) {
+  if (IsCommand("dl") || IsCommand("dd"))
+  {
     int from = FindLineStart(selectedBuffer, selectedBuffer->cursor);
     int to = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
     RemoveChars(selectedBuffer, from, to);
@@ -933,20 +1110,23 @@ void HandleNormalCommand() {
     SetCursorPosition(selectedBuffer->cursor);
   }
 
-  if (IsCommand("dW")) {
+  if (IsCommand("dW"))
+  {
     int from = selectedBuffer->cursor;
     int to = JumpWordWithPunctuationForward(selectedBuffer) - 1;
     RemoveChars(selectedBuffer, from, to);
     SaveCommand();
   }
-  if (IsCommand("dw")) {
+  if (IsCommand("dw"))
+  {
     int from = selectedBuffer->cursor;
     int lineEnd = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
     int to = MinI32(JumpWordForward(selectedBuffer) - 1, lineEnd - 1);
     RemoveChars(selectedBuffer, from, to);
     SaveCommand();
   }
-  if (IsCommand("cw") || IsCommand("cW")) {
+  if (IsCommand("cw") || IsCommand("cW"))
+  {
     int from = selectedBuffer->cursor;
     int lineEnd = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
     int to = MinI32(JumpWordForward(selectedBuffer) - 1, lineEnd - 1);
@@ -961,7 +1141,8 @@ void HandleNormalCommand() {
     FindEntries(selectedBuffer);
   }
 
-  if (IsCtrlCharCommand('J')) {
+  if (IsCtrlCharCommand('J'))
+  {
     int lineStart = FindLineStart(selectedBuffer, selectedBuffer->cursor);
     int cursorOffset = selectedBuffer->cursor - lineStart;
     int currentLineOffset = GetLineOffset(selectedBuffer, lineStart);
@@ -969,18 +1150,21 @@ void HandleNormalCommand() {
     SetCursorPosition(selectedBuffer->cursor + 5);
   }
 
-  if (IsCtrlCharCommand('K')) {
+  if (IsCtrlCharCommand('K'))
+  {
     SetCursorPosition(selectedBuffer->cursor - 5);
   }
   // TODO: these are starting to look like patterns for operation/motion common code
-  if (currentCommandLen > 2) {
+  if (currentCommandLen > 2)
+  {
     char op = currentCommand[0].ch;
     char motion = currentCommand[1].ch;
 
     int isValidOp = (op == 'd' || op == 'c' || op == 'y');
     int isValidMotion = motion == 'f' || motion == 't';
 
-    if (!hasMatchedAnyCommand && currentCommandLen == 3 && isValidOp && isValidMotion) {
+    if (!hasMatchedAnyCommand && currentCommandLen == 3 && isValidOp && isValidMotion)
+    {
       char ch = currentCommand[2].ch;
       int from = selectedBuffer->cursor;
       int to = 0;
@@ -992,7 +1176,8 @@ void HandleNormalCommand() {
 
       if (op == 'd')
         RemoveChars(selectedBuffer, from, to);
-      if (op == 'c') {
+      if (op == 'c')
+      {
         RemoveChars(selectedBuffer, from, to);
         mode = Insert;
       }
@@ -1004,7 +1189,8 @@ void HandleNormalCommand() {
     }
   }
 
-  if (IsCommand("O")) {
+  if (IsCommand("O"))
+  {
     i32 lineStart = FindLineStart(selectedBuffer, selectedBuffer->cursor);
     i32 offset = GetLineOffset(selectedBuffer, lineStart);
 
@@ -1015,7 +1201,8 @@ void HandleNormalCommand() {
     selectedBuffer->cursor = lineStart + offset;
     mode = Insert;
   }
-  if (IsCommand("o")) {
+  if (IsCommand("o"))
+  {
     i32 lineEnd = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
     i32 offset =
         GetLineOffset(selectedBuffer, FindLineStart(selectedBuffer, selectedBuffer->cursor));
@@ -1027,28 +1214,34 @@ void HandleNormalCommand() {
     selectedBuffer->cursor = lineEnd + 1 + offset;
     mode = Insert;
   }
-  if (IsCommand("v")) {
+  if (IsCommand("v"))
+  {
     mode = Visual;
     selectedBuffer->selectionStart = selectedBuffer->cursor;
   }
-  if (IsCommand("V")) {
+  if (IsCommand("V"))
+  {
     mode = VisualLine;
     selectedBuffer->selectionStart = selectedBuffer->cursor;
   }
-  if (IsCommand("A")) {
+  if (IsCommand("A"))
+  {
     selectedBuffer->cursor = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
     mode = Insert;
   }
-  if (IsCommand("i")) {
+  if (IsCommand("i"))
+  {
     mode = Insert;
     SaveCommand();
   }
-  if (IsCommand("a")) {
+  if (IsCommand("a"))
+  {
     selectedBuffer->cursor = MaxI32(selectedBuffer->cursor - 1, 0);
     mode = Insert;
     SaveCommand();
   }
-  if (IsCommand("I")) {
+  if (IsCommand("I"))
+  {
     selectedBuffer->cursor = FindLineStart(selectedBuffer, selectedBuffer->cursor);
     while (selectedBuffer->cursor < selectedBuffer->size &&
            IsWhitespace(selectedBuffer->content[selectedBuffer->cursor]))
@@ -1057,37 +1250,44 @@ void HandleNormalCommand() {
     mode = Insert;
     SaveCommand();
   }
-  if (IsCommand("C")) {
+  if (IsCommand("C"))
+  {
     i32 start = FindLineStart(selectedBuffer, selectedBuffer->cursor);
     i32 end = FindLineEnd(selectedBuffer, selectedBuffer->cursor) - 1;
-    if (start != end) {
+    if (start != end)
+    {
       RemoveChars(selectedBuffer, selectedBuffer->cursor, end);
     }
     mode = Insert;
     SaveCommand();
   }
-  if (IsCommand("D")) {
+  if (IsCommand("D"))
+  {
     i32 start = FindLineStart(selectedBuffer, selectedBuffer->cursor);
     i32 end = FindLineEnd(selectedBuffer, selectedBuffer->cursor) - 1;
-    if (start != end) {
+    if (start != end)
+    {
       RemoveChars(selectedBuffer, selectedBuffer->cursor, end);
       selectedBuffer->cursor -= 1;
     }
   }
 
-  if (IsCommand("x")) {
+  if (IsCommand("x"))
+  {
     if (selectedBuffer->cursor < selectedBuffer->size - 1)
       RemoveChar(selectedBuffer, selectedBuffer->cursor);
   }
-  if (IsCommand("yy") || IsCommand("yl")) {
+  if (IsCommand("yy") || IsCommand("yl"))
+  {
     i32 start = FindLineStart(selectedBuffer, selectedBuffer->cursor);
     i32 end = FindLineEnd(selectedBuffer, selectedBuffer->cursor);
     ClipboardCopy(mainWindow, selectedBuffer->content + start, end - start + 1);
   }
 
-  if (IsCommand("p")) {
+  if (IsCommand("p"))
+  {
     i32 size = 0;
-    char* textFromClipboard = ClipboardPaste(mainWindow, &size);
+    char *textFromClipboard = ClipboardPaste(mainWindow, &size);
 
     int whereToInsert = selectedBuffer->cursor + 1;
     int isInsertingNewLine = StrContainsChar(textFromClipboard, '\n');
@@ -1104,9 +1304,10 @@ void HandleNormalCommand() {
       VirtualFreeMemory(textFromClipboard);
   }
 
-  if (IsCommand("P")) {
+  if (IsCommand("P"))
+  {
     i32 size = 0;
-    char* textFromClipboard = ClipboardPaste(mainWindow, &size);
+    char *textFromClipboard = ClipboardPaste(mainWindow, &size);
 
     int whereToInsert = selectedBuffer->cursor;
     int isInsertingNewLine = StrContainsChar(textFromClipboard, '\n');
@@ -1124,8 +1325,10 @@ void HandleNormalCommand() {
       VirtualFreeMemory(textFromClipboard);
   }
 
-  if (currentCommandLen == 2 && currentCommand[0].ch == 'e') {
-    if (currentCommand[1].ch >= '0' && currentCommand[1].ch <= '9') {
+  if (currentCommandLen == 2 && currentCommand[0].ch == 'e')
+  {
+    if (currentCommand[1].ch >= '0' && currentCommand[1].ch <= '9')
+    {
       NavigateToError(currentCommand[1].ch - '1');
       hasMatchedAnyCommand = 1;
     }
@@ -1135,18 +1338,21 @@ void HandleNormalCommand() {
     SelectBuffer(&leftBuffer, &leftOffset, &leftRect);
   if (IsAltCharCommand('2'))
     SelectBuffer(&middleBuffer, &middleOffset, &middleRect);
-  if (IsAltCharCommand('3')) {
+  if (IsAltCharCommand('3'))
+  {
     isCompilationShown = 0;
     SelectBuffer(&rightBuffer, &bottomRightOffset, &bottomRightRect);
   }
   if (IsCtrlCharCommand('S'))
     SaveSelectedFile();
-  if (IsCtrlCharCommand(VK_OEM_PLUS)) {
+  if (IsCtrlCharCommand(VK_OEM_PLUS))
+  {
     fontSize += 1;
     fontArena.bytesAllocated = 0;
     ResetAppFonts();
   }
-  if (IsCtrlCharCommand(VK_OEM_MINUS)) {
+  if (IsCtrlCharCommand(VK_OEM_MINUS))
+  {
     fontSize -= 1;
     fontArena.bytesAllocated = 0;
     ResetAppFonts();
@@ -1162,7 +1368,8 @@ void HandleNormalCommand() {
   if (IsCommand(" f"))
     FormatSelectedFile();
 
-  if (IsCommand(" y")) {
+  if (IsCommand(" y"))
+  {
     isFullscreen = !isFullscreen;
     SetFullscreen(mainWindow, isFullscreen);
   }
@@ -1170,61 +1377,74 @@ void HandleNormalCommand() {
   if (IsCommand(" w"))
     SaveSelectedFile();
 
-  if (IsCommand("u")) {
+  if (IsCommand("u"))
+  {
     i32 currentCursor = selectedBuffer->cursor;
-    Change* appliedChange = UndoLastChange(selectedBuffer);
+    Change *appliedChange = UndoLastChange(selectedBuffer);
     if (appliedChange && appliedChange->type != Replaced)
       SetCursorPosition(appliedChange->at);
   }
-  if (IsCtrlCharCommand('R')) {
-    Change* appliedChange = RedoLastChange(selectedBuffer);
+  if (IsCtrlCharCommand('R'))
+  {
+    Change *appliedChange = RedoLastChange(selectedBuffer);
     if (appliedChange && appliedChange->type != Replaced)
       SetCursorPosition(appliedChange->at);
   }
-  if (IsCommand(" n")) {
+  if (IsCommand(" n"))
+  {
     isSearchVisible = 0;
   }
 
-  if (IsCommand("n")) {
-    if (!isSearchVisible) {
+  if (IsCommand("n"))
+  {
+    if (!isSearchVisible)
+    {
       isSearchVisible = 1;
       StartSearch();
-    } else {
+    }
+    else
+    {
       MoveNextOnSearch();
     }
   }
 
-  if (IsCommand("N")) {
+  if (IsCommand("N"))
+  {
     currentEntry--;
     if (currentEntry < 0)
       currentEntry = entriesCount - 1;
     SetCursorPosition(entriesAt[currentEntry].at);
   }
 
-  if (IsCommand("/")) {
+  if (IsCommand("/"))
+  {
     mode = LocalSearchTyping;
 
     isSearchVisible = 1;
   }
 
-  if (IsCommand(" q")) {
+  if (IsCommand(" q"))
+  {
     PostQuitMessage(0);
     isRunning = 0;
   }
 }
 
-void AppendCharIntoCommand(Key key) {
+void AppendCharIntoCommand(Key key)
+{
   currentCommand[currentCommandLen++] = key;
   char ch = key.ch;
   visibleCommandLen = 0;
   hasMatchedAnyCommand = 0;
-  if (key.ch == VK_ESCAPE) {
+  if (key.ch == VK_ESCAPE)
+  {
     mode = Normal;
     isTagsSearchVisible = 0;
     hasMatchedAnyCommand = 1;
     if (!isPlayingLastRepeat)
       lastCommand[lastCommandLen++].ch = ch;
-  } else if (isTagsSearchVisible)
+  }
+  else if (isTagsSearchVisible)
     HandleTagSearchCommand();
   else if (mode == LocalSearchTyping)
     HandleLocalSearchCommand();
@@ -1232,7 +1452,8 @@ void AppendCharIntoCommand(Key key) {
     HandleFileSelectionCommand();
   else if (mode == Insert)
     HandleInsertCommand();
-  else {
+  else
+  {
     HandleVisualAndNormalCommands();
     if (mode == Visual || mode == VisualLine)
       HandleVisualCommand();
@@ -1244,8 +1465,10 @@ void AppendCharIntoCommand(Key key) {
     ClearCommand();
 }
 
-LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
-  switch (message) {
+LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
+{
+  switch (message)
+  {
 
   case WM_PAINT:
     PAINTSTRUCT paint = {0};
@@ -1254,21 +1477,29 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     break;
   case WM_CHAR:
     char ch = (char)wParam;
-    if (ch >= ' ' && ch <= MAX_CHAR_CODE) {
-      if (mode == Normal && wParam == '.' && currentCommandLen == 0) {
+    if (ch >= ' ' && ch <= MAX_CHAR_CODE)
+    {
+      if (mode == Normal && wParam == '.' && currentCommandLen == 0)
+      {
         isPlayingLastRepeat = 1;
-        for (int i = 0; i < lastCommandLen; i++) {
+        for (int i = 0; i < lastCommandLen; i++)
+        {
           AppendCharIntoCommand(lastCommand[i]);
         }
         isPlayingLastRepeat = 0;
-      } else if (mode == LocalSearchTyping) {
+      }
+      else if (mode == LocalSearchTyping)
+      {
         searchTerm[searchLen++] = wParam;
         StartSearch();
-      } else if (mode == ReplaceChar) {
+      }
+      else if (mode == ReplaceChar)
+      {
         selectedBuffer->content[selectedBuffer->cursor] = ch;
         selectedBuffer->isSaved = 0;
         mode = Normal;
-      } else
+      }
+      else
         AppendCharIntoCommand((Key){.ch = ch});
     }
     break;
@@ -1314,14 +1545,16 @@ LRESULT OnEvent(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
   return DefWindowProc(window, message, wParam, lParam);
 }
 
-void DrawFooter() {
+void DrawFooter()
+{
   RectFill(footerRect, colorsFooter);
 
-  char* label = selectedBuffer->filePath;
+  char *label = selectedBuffer->filePath;
   int len = strlen(label);
   int x = footerPadding;
   int y = footerRect.y;
-  while (*label) {
+  while (*label)
+  {
     CopyMonochromeTextureRectTo(&canvas, &footerRect, &font.textures[*label], x, y, 0xffffff);
     x += font.charWidth;
     label++;
@@ -1331,7 +1564,8 @@ void DrawFooter() {
 
   int charsToShow = currentCommandLen > 0 ? currentCommandLen : visibleCommandLen;
   int commandX = (strlen(selectedBuffer->filePath) + 2) * font.charWidth;
-  for (int i = 0; i < charsToShow; i++) {
+  for (int i = 0; i < charsToShow; i++)
+  {
     u32 color = currentCommandLen > 0 ? 0xffffff : 0xbbbbbb;
     CopyMonochromeTextureRectTo(&canvas, &footerRect, &font.textures[currentCommand[i].ch],
                                 commandX, y, color);
@@ -1355,16 +1589,19 @@ void DrawFooter() {
   int width = chars * font.charWidth;
   int posX = screen.width - width - 2 * font.charWidth;
   int posY = footerRect.y + footerPadding;
-  for (int i = 0; i < chars; i++) {
+  for (int i = 0; i < chars; i++)
+  {
     CopyMonochromeTextureRectTo(&canvas, &footerRect, &font.textures[posLabel[i]], posX, posY,
                                 0x888888);
     posX += font.charWidth;
   }
 }
 
-void DrawScrollBar(Rect rect, Buffer* buffer, Spring* offset) {
+void DrawScrollBar(Rect rect, Buffer *buffer, Spring *offset)
+{
   f32 pageHeight = (f32)GetPageHeight(buffer);
-  if (rect.height < pageHeight) {
+  if (rect.height < pageHeight)
+  {
     f32 height = (f32)rect.height;
     f32 scrollOffset = (f32)offset->current;
 
@@ -1379,11 +1616,13 @@ void DrawScrollBar(Rect rect, Buffer* buffer, Spring* offset) {
   }
 }
 
-void DrawSelection(Buffer* buffer, Rect rect, Spring* offset) {
+void DrawSelection(Buffer *buffer, Rect rect, Spring *offset)
+{
   u32 bg = colorsSelection;
   i32 x = horizPadding + rect.x;
   i32 y = vertPadding + rect.y - (i32)offset->current;
-  if (mode == Visual || mode == VisualLine) {
+  if (mode == Visual || mode == VisualLine)
+  {
     SelectionRange range = GetSelectionRange();
 
     CursorPos startPos = GetPositionOffset(buffer, range.left);
@@ -1396,8 +1635,10 @@ void DrawSelection(Buffer* buffer, Rect rect, Spring* offset) {
     PaintRect(x + startPos.lineOffset * font.charWidth, y + startPos.line * lineHeightPx,
               firstLineLen * font.charWidth, lineHeightPx, bg);
 
-    if (startPos.line != endPos.line) {
-      for (i32 l = startPos.line + 1; l < endPos.line; l++) {
+    if (startPos.line != endPos.line)
+    {
+      for (i32 l = startPos.line + 1; l < endPos.line; l++)
+      {
         PaintRect(x, y + l * lineHeightPx, GetLineLength(selectedBuffer, l) * font.charWidth,
                   lineHeightPx, bg);
       }
@@ -1408,7 +1649,8 @@ void DrawSelection(Buffer* buffer, Rect rect, Spring* offset) {
   }
 }
 
-void DrawArea(Rect rect, Buffer* buffer, Spring* offset) {
+void DrawArea(Rect rect, Buffer *buffer, Spring *offset)
+{
   if (rect.width == 0)
     return;
   i32 startX = rect.x + horizPadding;
@@ -1434,44 +1676,53 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset) {
     PaintRect(rect.x + rect.width - 30 - scrollbarWidth, rect.y, 20, 10, 0x882222);
 
   int hasCursor = buffer == selectedBuffer && mode != FileSelection;
-  if (hasCursor) {
+  if (hasCursor)
+  {
     // cursor line background
     PaintRect(rect.x, cursorY, rect.width, lineHeightPx, lineColor);
   }
 
   i32 charShift = (lineHeightPx - font.charHeight) / 2;
 
-  if (selectedBuffer == buffer && isSearchVisible) {
+  if (selectedBuffer == buffer && isSearchVisible)
+  {
     i32 currentSearchEntryIndex = 0;
-    EntryFound* found = NULL;
+    EntryFound *found = NULL;
     i32 charY = rect.y + startY;
 
-    for (i32 i = 0; i < buffer->size; i++) {
+    for (i32 i = 0; i < buffer->size; i++)
+    {
       if (currentSearchEntryIndex < entriesCount)
         found = &entriesAt[currentSearchEntryIndex];
       else
         found = NULL;
 
-      if (found && i >= found->at && i < found->at + found->len) {
+      if (found && i >= found->at && i < found->at + found->len)
+      {
         PaintRect(x, charY, font.charWidth, lineHeightPx, colorsSearchResult);
       }
 
       char ch = buffer->content[i];
-      if (ch == '\n') {
+      if (ch == '\n')
+      {
         x = startX;
         charY += lineHeightPx;
-      } else {
+      }
+      else
+      {
         x += font.charWidth;
       }
 
-      if (found && i >= found->at + found->len) {
+      if (found && i >= found->at + found->len)
+      {
         currentSearchEntryIndex++;
       }
     }
 
     int searchX = rect.x + rect.width - 400;
     int searchY = rect.y + 13;
-    for (i32 i = 0; i < searchLen; i++) {
+    for (i32 i = 0; i < searchLen; i++)
+    {
       u32 searchColor = mode == LocalSearchTyping ? 0x66ffff : 0xaaaaaa;
       CopyMonochromeTextureRectTo(&canvas, &rect, &font.textures[searchTerm[i]], searchX, searchY,
                                   searchColor);
@@ -1480,16 +1731,18 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset) {
     char s[512] = {0};
     int visibleCurrent = entriesCount > 0 ? currentEntry + 1 : 0;
     sprintf(s, "%d of %d", visibleCurrent, entriesCount);
-    char* a = s;
+    char *a = s;
     searchX += font.charWidth * 4;
-    while (*a) {
+    while (*a)
+    {
       CopyMonochromeTextureRectTo(&canvas, &rect, &font.textures[*a], searchX, searchY, 0xaaaaaa);
       searchX += font.charWidth;
       a++;
     }
   }
 
-  if (hasCursor) {
+  if (hasCursor)
+  {
     DrawSelection(buffer, rect, offset);
 
     // cursor
@@ -1513,10 +1766,11 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset) {
 
   int currentToken = 0;
 
-  for (i32 i = 0; i < buffer->size; i++) {
+  for (i32 i = 0; i < buffer->size; i++)
+  {
     i32 charY = y + charShift;
     char ch = buffer->content[i];
-    Token* t =
+    Token *t =
         (currentToken < tokensCount && tokens[currentToken].start <= i) ? &tokens[currentToken] : 0;
     u32 color = colorsFont;
     if (t && t->type == Preprocessor)
@@ -1530,10 +1784,13 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset) {
     if (t && (t->type == StringLiteral || t->type == CharLiteral))
       color = colorString;
 
-    if (ch == '\n') {
+    if (ch == '\n')
+    {
       x = startX;
       y += lineHeightPx;
-    } else if (ch < MAX_CHAR_CODE && ch >= ' ') {
+    }
+    else if (ch < MAX_CHAR_CODE && ch >= ' ')
+    {
 
       u32 charColor = (i == buffer->cursor && hasCursor) ? colorsBg : color;
       CopyMonochromeTextureRectTo(&canvas, &rect, &font.textures[ch], x, charY, charColor);
@@ -1542,7 +1799,9 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset) {
         PaintRect(x, charY + lineHeightPx - 3, font.charWidth, 3, cursorColor);
 
       x += font.charWidth;
-    } else {
+    }
+    else
+    {
       PaintRect(x, charY, font.charWidth, lineHeightPx, 0xff0000);
       x += font.charWidth;
     }
@@ -1551,7 +1810,8 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset) {
       currentToken++;
   }
 
-  if (mode == FileSelection && buffer == selectedBuffer) {
+  if (mode == FileSelection && buffer == selectedBuffer)
+  {
     i32 fileBoxWidth = 400;
     int boxX = rect.x + rect.width / 2 - fileBoxWidth / 2;
     int boxY = rect.y + 20;
@@ -1562,12 +1822,14 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset) {
     boxY += boxVpadding;
     boxX += boxHpadding;
 
-    for (i32 i = 0; i < ArrayLength(allFiles); i++) {
-      char* label = allFiles[i];
+    for (i32 i = 0; i < ArrayLength(allFiles); i++)
+    {
+      char *label = allFiles[i];
       int textX = boxX;
       CopyMonochromeTextureRectTo(&canvas, &rect, &font.textures[i + '1'], textX, boxY, 0x888888);
       textX += font.charWidth * 2;
-      while (*label) {
+      while (*label)
+      {
         CopyMonochromeTextureRectTo(&canvas, &rect, &font.textures[*label], textX, boxY, 0xffffff);
         label++;
         textX += font.charWidth;
@@ -1579,7 +1841,122 @@ void DrawArea(Rect rect, Buffer* buffer, Spring* offset) {
   DrawScrollBar(rect, buffer, offset);
 }
 
-void Draw() {
+//
+//
+//
+
+void PrintStackTrace(CONTEXT *context)
+{
+  HANDLE process = GetCurrentProcess();
+  HANDLE thread = GetCurrentThread();
+
+  SymInitialize(process, NULL, TRUE);
+
+  STACKFRAME64 stack = {0};
+  DWORD machineType;
+
+#if defined(_M_IX86)
+  machineType = IMAGE_FILE_MACHINE_I386;
+  stack.AddrPC.Offset = context->Eip;
+  stack.AddrPC.Mode = AddrModeFlat;
+  stack.AddrFrame.Offset = context->Ebp;
+  stack.AddrFrame.Mode = AddrModeFlat;
+  stack.AddrStack.Offset = context->Esp;
+  stack.AddrStack.Mode = AddrModeFlat;
+#elif defined(_M_X64)
+  machineType = IMAGE_FILE_MACHINE_AMD64;
+  stack.AddrPC.Offset = context->Rip;
+  stack.AddrPC.Mode = AddrModeFlat;
+  stack.AddrFrame.Offset = context->Rbp;
+  stack.AddrFrame.Mode = AddrModeFlat;
+  stack.AddrStack.Offset = context->Rsp;
+  stack.AddrStack.Mode = AddrModeFlat;
+#else
+#error "Platform not supported"
+#endif
+
+  for (int frame = 0; frame < 64; ++frame)
+  {
+    if (!StackWalk64(machineType, process, thread, &stack, context, NULL, SymFunctionTableAccess64,
+                     SymGetModuleBase64, NULL))
+      break;
+
+    if (stack.AddrPC.Offset == 0)
+      continue;
+
+    DWORD64 addr = stack.AddrPC.Offset;
+
+    // Get symbol
+    char buffer[sizeof(SYMBOL_INFO) + MAX_SYM_NAME] = {0};
+    PSYMBOL_INFO symbol = (PSYMBOL_INFO)buffer;
+    symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+    symbol->MaxNameLen = MAX_SYM_NAME;
+
+    DWORD64 displacement = 0;
+
+    IMAGEHLP_LINE64 line = {0};
+    line.SizeOfStruct = sizeof(IMAGEHLP_LINE64);
+    DWORD lineDisplacement = 0;
+    SymGetLineFromAddr64(process, addr, &lineDisplacement, &line);
+    // printf(" at %s:%lu", line.FileName, line.LineNumber);
+
+    if (SymFromAddr(process, addr, &displacement, symbol))
+    {
+      printf("#%02d: %s %s:%d [0x%llx]\n", frame, line.FileName, symbol->Name, line.LineNumber,
+             symbol->Address);
+    }
+    else
+    {
+      printf("#%02d: ??? [0x%llx]\n", frame, addr);
+    }
+  }
+}
+
+LONG CALLBACK VectoredHandler(PEXCEPTION_POINTERS ExceptionInfo)
+{
+  PrintStackTrace(ExceptionInfo->ContextRecord);
+  return EXCEPTION_CONTINUE_EXECUTION;
+}
+
+LONG WINAPI CustomExceptionHandler(EXCEPTION_POINTERS *ExceptionInfo)
+{
+  printf("Unhandled exception occurred: code 0x%08X\n",
+         ExceptionInfo->ExceptionRecord->ExceptionCode);
+  PrintStackTrace(ExceptionInfo->ContextRecord);
+  isErroed = 1;
+  return EXCEPTION_EXECUTE_HANDLER;
+}
+
+void TryRender()
+{
+  // __try
+  // {
+  if (!isErroed)
+  {
+    render(&canvas, &topRightRect);
+  }
+  else
+  // __except (EXCEPTION_EXECUTE_HANDLER){
+  // __except (CustomExceptionHandler(GetExceptionInformation()))
+  {
+    char *label = "Render has failed";
+    int x = topRightRect.x;
+    int y = topRightRect.y;
+
+    while (*label)
+    {
+      CopyMonochromeTextureRectTo(&canvas, &topRightRect, &font.textures[*label], x, y, 0xffffff);
+      label++;
+      x += font.charWidth;
+    }
+  }
+}
+//
+//
+//
+
+void Draw()
+{
   for (i32 i = 0; i < canvas.width * canvas.height; i++)
     canvas.pixels[i] = colorsBg;
 
@@ -1595,7 +1972,8 @@ void Draw() {
   else
     DrawArea(bottomRightRect, &rightBuffer, &bottomRightOffset);
 
-  PaintRect(topRightRect.x, topRightRect.y, topRightRect.width, topRightRect.height, 0x222288);
+  if (render)
+    TryRender();
 
   DrawFooter();
   if (isTagsSearchVisible)
@@ -1605,11 +1983,13 @@ void Draw() {
                 canvas.pixels, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
 }
 
-inline i64 EllapsedMs(i64 start) {
+inline i64 EllapsedMs(i64 start)
+{
   return (i64)((f32)(GetPerfCounter() - start) * 1000.0f / (f32)GetPerfFrequency());
 }
 
-int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd) {
+int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd)
+{
   (void)hPrevInstance;
   (void)lpCmdLine;
   (void)nShowCmd;
@@ -1641,13 +2021,20 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
   SelectBuffer(&middleBuffer, &middleOffset, &middleRect);
 
   InitAnimations();
+  LoadLib();
 
   tokens = VirtualAllocateMemory(sizeof(Token) * 20000000);
+
+  AddVectoredExceptionHandler(1, VectoredHandler);
+  // SetUnhandledExceptionFilter(CustomExceptionHandler);
+
   // InitChanges(selectedBuffer, &changeArena);
   i64 startCounter = GetPerfCounter();
-  while (isRunning) {
+  while (isRunning)
+  {
     MSG msg;
-    while (PeekMessageA(&msg, 0, 0, 0, PM_REMOVE)) {
+    while (PeekMessageA(&msg, 0, 0, 0, PM_REMOVE))
+    {
       TranslateMessage(&msg);
       DispatchMessage(&msg);
     }

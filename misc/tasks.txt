@@ -10,7 +10,7 @@ OverallProgress
   Folder Explorer
 
 Things to play around
-    - Syntax highlight
+    y Syntax highlight
     - Run app in the editor (with logs, crash reports)
     - Folds
 
@@ -18,6 +18,9 @@ ideas
     - Fold stuff not only based on nestedness, but using comment blocks
        for example //\n //Tags \n // will behave as -1 level until next block
 
+Backlog:
+    - save cursor position history
+    - 
 
 Timeline
 Week 4
@@ -43,7 +46,7 @@ Week 4
      - gf go to file
      - gv reselect
      - search by word, meaning search separate token, not just substring
-     - % to jump to matching char. Highlight matching char when focused
+     y % to jump to matching char. Highlight matching char when focused
      - show relative line numbers
      - figure out how to handle same file open at two splits
        - also make sure external changes to the file will be loaded
@@ -52,6 +55,9 @@ Week 4
           with animation feedback
 
 
+ 
+  Sunday
+  
   Saturday
      - Finish tag search
        

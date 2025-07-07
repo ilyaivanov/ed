@@ -20,13 +20,15 @@ Plug 'ayu-theme/ayu-vim'
 Plug 'tpope/vim-commentary'
 Plug 'kana/vim-textobj-user'
 Plug 'kana/vim-textobj-entire'
+Plug 'rebelot/kanagawa.nvim'
 call plug#end()
 
 set termguicolors     " enable true colors support
 "let ayucolor="light"  " for light version of theme
 ""let ayucolor="mirage" " for mirage version of theme
 let ayucolor="dark"   " for dark version of theme
-colorscheme ayu
+colorscheme kanagawa-dragon
+"ayu
 
 let mapleader = " "
 nnoremap <leader>pv :Vex<CR>
@@ -34,7 +36,7 @@ nnoremap <leader>w :w<CR>\
 nnoremap <leader>vv <C-v>
 nnoremap <leader>n :noh<CR>
 nnoremap <leader>c :!ctags -R *<CR>
-nnoremap <leader>r :silent update \| !misc\\build.bat<CR>
+nnoremap <leader>r :silent update \| !build.bat<CR>
 "nnoremap <leader>f :silent update \| :silent !clang-format -i -style="{AllowShortFunctionsOnASingleLine:None, ColumnLimit: 120}" %<CR>
 nnoremap <leader>f :silent update \| :silent !clang-format --style="{AllowShortFunctionsOnASingleLine: \"Empty\", ColumnLimit: 100, PointerAlignment: \"Left\"}" -i %<CR>
 
