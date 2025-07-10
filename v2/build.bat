@@ -1,11 +1,10 @@
 
 @echo off
 
-set libs=-lkernel32 -luser32 -lgdi32.lib -ldwmapi.lib -lopengl32.lib
+set libs=-lkernel32 -luser32 -lgdi32.lib -ldwmapi.lib -lopengl32.lib -lwinmm.lib
 
 clang main.cpp -g -o main.exe %libs%
-rem clang main.cpp -g -o main.exe %libs%
-rem clang vex/vex.cpp -O3 -ffast-math -o main.exe %libs%
+rem clang main2.cpp -O3 -ffast-math -o main.exe %libs%
 
 @REM -Wall -Wextra
 if %ERRORLEVEL% EQU 0 (
