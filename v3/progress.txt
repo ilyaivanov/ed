@@ -1,10 +1,2 @@
-General idea: try to work with the code as with Tree
- y Render tree
- y Navigate around tree
- y Open\close nodes in tree
- y Parse code file into a tree
- - Move items around
- - Create\remove items
- - Rename items
- - Move cursor inside the item
-
+Replace helix
+Create a simple notepad with the ability to run a console app inside

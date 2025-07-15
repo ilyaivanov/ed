@@ -5,6 +5,9 @@
 #include <windowsx.h>
 #include <winuser.h>
 
+#define KB(size) (size * 1024)
+#define MB(size) KB(size * 1024)
+
 typedef struct MyBitmap {
   i32 width;
   i32 height;
@@ -204,6 +207,56 @@ void ReadFileInto(const char* path, u32 fileSize, char* buffer) {
   CloseHandle(file);
 }
 
+void WriteMyFile(char* path, char* content, int size) {
+  HANDLE file = CreateFileA(path, GENERIC_WRITE, FILE_SHARE_READ, 0, CREATE_ALWAYS, 0, 0);
+
+  DWORD bytesWritten;
+  int res = WriteFile(file, content, size, &bytesWritten, 0);
+  CloseHandle(file);
+}
+
 inline BOOL IsKeyPressed(u32 code) {
   return (GetKeyState(code) >> 15) & 1;
+}
+
+void RunCommand(char* cmd, char* output, int* len) {
+  HANDLE hRead, hWrite;
+  SECURITY_ATTRIBUTES sa = {sizeof(SECURITY_ATTRIBUTES), NULL, TRUE};
+
+  if (!CreatePipe(&hRead, &hWrite, &sa, KB(128)))
+    return;
+
+  // Ensure the read handle to the pipe is not inherited.
+  SetHandleInformation(hRead, HANDLE_FLAG_INHERIT, 0);
+
+  PROCESS_INFORMATION pi;
+  STARTUPINFO si = {sizeof(STARTUPINFO)};
+  si.dwFlags = STARTF_USESTDHANDLES;
+  si.hStdOutput = hWrite;
+  si.hStdError = hWrite;
+  si.hStdInput = NULL;
+
+  // CREATE_NO_WINDOW
+  if (!CreateProcess(NULL, cmd, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+    CloseHandle(hWrite);
+    CloseHandle(hRead);
+    return;
+  }
+
+  CloseHandle(hWrite);
+
+  // WaitForSingleObject(pi.hProcess, 2000);
+  WaitForSingleObject(pi.hProcess, INFINITE);
+
+  DWORD bytesRead = 0, totalRead = 0;
+  while (ReadFile(hRead, output + totalRead, 1, &bytesRead, NULL)) {
+    totalRead += bytesRead;
+  }
+
+  output[totalRead] = '\0';
+  *len = totalRead;
+
+  CloseHandle(pi.hProcess);
+  CloseHandle(pi.hThread);
+  CloseHandle(hRead);
 }
