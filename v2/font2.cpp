@@ -151,16 +151,7 @@ inline void CopyMonochromeTextureRectTo(const MyBitmap* canvas, MyBitmap* source
   for (i32 y = 0; y < sourceT->height; y += 1) {
     u32* pixel = row;
     u32* sourcePixel = source;
-    for (i32 x = 0; x < sourceT->width; x += 1) {
-      // stupid fucking logic needs to extracted outside of the loop
-      if (*sourcePixel != 0 && (y + offsetY) > 0 && (x + offsetX) > 0 &&
-          (x + offsetX) < (canvas->width) && (y + offsetY) < (canvas->height))
-        // *pixel = *sourcePixel;
-        *pixel = *sourcePixel; // AlphaBlendGreyscale(*pixel, *sourcePixel, color);
-
-      sourcePixel += 1;
-      pixel += 1;
-    }
+    memmove(row, source, sourceT->width * 4);
     source -= sourceT->width;
     row += canvas->width;
   }

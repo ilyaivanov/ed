@@ -11,6 +11,8 @@ struct Item {
   Item* parent;
   i32 childrenCount;
   i32 childrenCapacity;
+
+  Item* closingBracket;
 };
 
 Item allItems[10 * 1024];
@@ -32,6 +34,7 @@ Item* AddChild(Item* parent, const char* title) {
     parent->childrenCapacity = newCapacity;
     free(temp);
   }
+
   Item* newItem = FindFreeItem();
   if (newItem) {
     newItem->isTaken = 1;
@@ -52,8 +55,24 @@ i32 GetItemIndex(Item* item) {
   return -1;
 }
 
+Item* GetItemPrevSibling(Item* item) {
+  i32 index = GetItemIndex(item);
+  if (index == 0)
+    return 0;
+  return item->parent->children[index - 1];
+}
+
 i32 IsRoot(Item* item) {
   return !item->parent;
+}
+
+i32 IsSkippedClosedBracket(Item* item) {
+  if (item->title[0] == '}') {
+    Item* prev = GetItemPrevSibling(item);
+    if (prev && prev->isClosed)
+      return 1;
+  }
+  return 0;
 }
 
 Item* GetItemBelow(Item* item) {

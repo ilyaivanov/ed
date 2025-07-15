@@ -6,10 +6,9 @@
 FontData font;
 
 Window window;
-MyBitmap texture;
 f32 lineHeight = 1.2;
 i32 fontSize = 14;
-u32 color = 0xffffff;
+u32 color = 0xdddddd;
 u32 bg = 0x008800;
 
 Item* selected;
@@ -23,11 +22,24 @@ struct ItemsStack {
   StackEntry items[255];
   i32 size;
 };
+void SwapSelectedItemDown() {
+  i32 index = GetItemIndex(selected);
+  if (index < (selected->parent->childrenCount - 1)) {
+    Item* tmp = selected->parent->children[index + 1];
+    selected->parent->children[index + 1] = selected;
+    selected->parent->children[index] = tmp;
+  }
+}
 
 void MoveDown() {
   Item* nextSelected = GetItemBelow(selected);
-  if (nextSelected)
-    selected = nextSelected;
+  if (nextSelected) {
+    if (IsSkippedClosedBracket(nextSelected))
+      nextSelected = GetItemBelow(nextSelected);
+    if (nextSelected) {
+      selected = nextSelected;
+    }
+  }
 }
 
 void MoveLeft() {
@@ -48,8 +60,13 @@ void MoveUp() {
   i32 index = GetItemIndex(selected);
   if (index == 0 && !IsRoot(selected->parent))
     selected = selected->parent;
-  else if (index != 0)
-    selected = GetMostNestedItem(selected->parent->children[index - 1]);
+  else if (index != 0) {
+    Item* item = GetMostNestedItem(selected->parent->children[index - 1]);
+    if (IsSkippedClosedBracket(item))
+      item = GetMostNestedItem(item->parent->children[index - 2]);
+    if (item)
+      selected = item;
+  }
 }
 
 LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -71,8 +88,12 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
       PostQuitMessage(0);
       window.isTerminated = 1;
     }
-    if (wParam == 'J')
-      MoveDown();
+    if (wParam == 'J') {
+      if (IsKeyPressed(VK_MENU))
+        SwapSelectedItemDown();
+      else
+        MoveDown();
+    }
     if (wParam == 'H')
       MoveLeft();
 
@@ -153,8 +174,8 @@ void Init(char* file) {
     // i32 strLen = file - start + 1;
     // char* startStart = file
     char* str = (char*)malloc(file - start + 1);
-    memmove(str, start, file - start);
-    str[file - start] = '\0';
+    memmove(str, start + offset, file - start - offset);
+    str[file - start - offset] = '\0';
 
     if (!IsEmptyLine(start)) {
       i32 level = offset / 2;
@@ -189,7 +210,7 @@ void Push(ItemsStack* stack, Item* item, i32 level) {
 
 void PushItemChilren(ItemsStack* stack, Item* item, i32 level) {
   for (i32 i = item->childrenCount - 1; i >= 0; i--) {
-    Push(stack, item->children[i], level + 1);
+    Push(stack, item->children[i], level);
   }
 }
 
@@ -202,14 +223,21 @@ void UpdateAndDraw(f32 deltaSec) {
   while (stack.size > 0) {
     StackEntry entry = Pop(&stack);
 
-    if (selected == entry.item)
-      PaintRect(V2{0, (f32)y}, 10, font.charHeight, 0x00ff00);
+    if (IsSkippedClosedBracket(entry.item))
+      continue;
 
-    PrintLine(x + entry.level * (font.charWidth * 2), y, entry.item->title);
+    i32 itemX = x + entry.level * (font.charWidth * 2);
+    if (entry.item->isClosed)
+      PaintRect(V2{(f32)0, (f32)y}, window.canvas.width, font.charHeight * lineHeight, 0x15181e);
+
+    if (selected == entry.item)
+      PaintRect(V2{(f32)itemX, (f32)y}, 10, font.charHeight, 0x008800);
+
+    PrintLine(itemX, y, entry.item->title);
     y += font.charHeight * lineHeight;
 
     if (!entry.item->isClosed)
-      PushItemChilren(&stack, entry.item, entry.level);
+      PushItemChilren(&stack, entry.item, entry.level + 1);
   }
 }
 
@@ -248,11 +276,11 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
   f32 freq = (f32)GetPerfFrequency();
 
   Arena arena = CreateArena(10 * 1024 * 1024);
-  font.color = 0xeeeeee;
+  font.color = color;
   InitFont(&font, "Consolas", fontSize, &arena);
 
   i32 size = 0;
-  Init(ReadTextFile(".\\main2.cpp", &size));
+  Init(ReadTextFile(".\\foo.cpp", &size));
 
   while (!window.isTerminated) {
     MSG msg;

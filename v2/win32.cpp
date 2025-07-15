@@ -40,6 +40,15 @@ inline void VirtualFreeMemory(void* ptr) {
   VirtualFree(ptr, 0, MEM_RELEASE);
 };
 
+void InitBitmapInfo(BITMAPINFO* bitmapInfo, i32 width, i32 height) {
+  bitmapInfo->bmiHeader.biSize = sizeof(bitmapInfo->bmiHeader);
+  bitmapInfo->bmiHeader.biBitCount = 32;
+  bitmapInfo->bmiHeader.biWidth = width;
+  bitmapInfo->bmiHeader.biHeight = -height; // makes rows go up, instead of going down by default
+  bitmapInfo->bmiHeader.biPlanes = 1;
+  bitmapInfo->bmiHeader.biCompression = BI_RGB;
+}
+
 typedef BOOL WINAPI set_process_dpi_aware(void);
 typedef BOOL WINAPI set_process_dpi_awareness_context(DPI_AWARENESS_CONTEXT);
 static void PreventWindowsDPIScaling() {
@@ -126,13 +135,7 @@ void OnSize(Window* window, LPARAM lParam) {
   i32 canvasHeight = window->height;
   window->canvas.width = canvasWidth;
   window->canvas.height = canvasHeight;
-  window->bitmapInfo.bmiHeader.biSize = sizeof(window->bitmapInfo.bmiHeader);
-  window->bitmapInfo.bmiHeader.biBitCount = 32;
-  window->bitmapInfo.bmiHeader.biWidth = canvasWidth;
-  // window->// makes rows go down, instead of going up by default
-  window->bitmapInfo.bmiHeader.biHeight = -canvasHeight;
-  window->bitmapInfo.bmiHeader.biPlanes = 1;
-  window->bitmapInfo.bmiHeader.biCompression = BI_RGB;
+  InitBitmapInfo(&window->bitmapInfo, canvasWidth, canvasHeight);
 
   if (window->canvas.pixels)
     VirtualFreeMemory(window->canvas.pixels);
