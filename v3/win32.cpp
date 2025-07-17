@@ -260,3 +260,41 @@ void RunCommand(char* cmd, char* output, int* len) {
   CloseHandle(pi.hThread);
   CloseHandle(hRead);
 }
+
+char* ClipboardPaste(HWND window, i32* size) {
+  OpenClipboard(window);
+  HANDLE hClipboardData = GetClipboardData(CF_TEXT);
+  char* pchData = (char*)GlobalLock(hClipboardData);
+  char* res;
+  if (pchData) {
+    i32 len = strlen(pchData);
+    res = (char*)VirtualAllocateMemory(len);
+    memmove(res, pchData, len);
+    GlobalUnlock(hClipboardData);
+    *size = len;
+  } else {
+    OutputDebugStringA("Failed to capture clipboard\n");
+  }
+  CloseClipboard();
+  return res;
+}
+
+// https://www.codeproject.com/Articles/2242/Using-the-Clipboard-Part-I-Transferring-Simple-Tex
+void ClipboardCopy(HWND window, char* text, i32 len) {
+  if (OpenClipboard(window)) {
+    EmptyClipboard();
+
+    HGLOBAL hClipboardData = GlobalAlloc(GMEM_DDESHARE, len + 1);
+
+    char* pchData = (char*)GlobalLock(hClipboardData);
+
+    memmove(pchData, text, len);
+    pchData[len] = '\0';
+
+    GlobalUnlock(hClipboardData);
+
+    SetClipboardData(CF_TEXT, hClipboardData);
+
+    CloseClipboard();
+  }
+}
