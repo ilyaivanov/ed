@@ -1,4 +1,5 @@
 #include "math.cpp"
+#include "vim.cpp"
 #include "win32.cpp"
 #include <stdio.h>
 #include <winuser.h>
@@ -33,6 +34,8 @@ i32 selectionStart = -1;
 
 char* output;
 i32 outputLen;
+
+
 
 u32 ToWinColor(u32 color) {
   return ((color & 0xff0000) >> 16) | (color & 0x00ff00) | ((color & 0x0000ff) << 16);
@@ -244,6 +247,11 @@ void Size(LPARAM lParam) {
   SelectObject(currentDc, canvasBitmap);
 }
 
+void UpdateCursor(i32 pos) {
+  cursorPos = pos;
+  desiredOffset = cursorPos - FindLineStart(cursorPos);
+}
+
 void HandleMovement(WPARAM wParam) {
   if (wParam == 'L')
     MoveRight();
@@ -253,6 +261,14 @@ void HandleMovement(WPARAM wParam) {
     MoveDown();
   if (wParam == 'K')
     MoveUp();
+  if (wParam == 'B' && IsKeyPressed(VK_SHIFT))
+    UpdateCursor(JumpWordWithPunctuationBackward(file, fileSize, cursorPos));
+  else if (wParam == 'B')
+    UpdateCursor(JumpWordBackward(file, fileSize, cursorPos));
+  if (wParam == 'W' && IsKeyPressed(VK_SHIFT))
+    UpdateCursor(JumpWordWithPunctuationForward(file, fileSize, cursorPos));
+  else if (wParam == 'W')
+    UpdateCursor(JumpWordForward(file, fileSize, cursorPos));
 }
 
 void HandleNormalAndVisualCommands(WPARAM wParam) {
@@ -347,6 +363,8 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
       if (wParam == VK_BACK) {
         RemoveChar();
       }
+      if(wParam == 'V' && IsKeyPressed(VK_CONTROL))
+        PasteFromClipboard();
       if (wParam == VK_RETURN)
         InsertCharAtCursor('\n');
     } else if (mode == Visual) {
@@ -535,7 +553,7 @@ void UpdateAndDraw(f32 deltaSec) {
 
   PrintFrameStats();
   if (outputLen > 0)
-    PrintParagraph(20, 700, output, outputLen);
+    PrintParagraph(window.width / 2 + 20, 20, output, outputLen);
 }
 
 int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd) {
