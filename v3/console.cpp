@@ -1,16 +1,11 @@
 #include <stdio.h>
 
-void repeatchar(int count, char ch) {
-  for (int i = 0; i < count; i++)
+void p(int c, char ch) {
+  for (int i = 0; i < c; i++)
     printf("%c", ch);
 }
-
 int main() {
-  int size = 20;
-  for (int i = 1; i <= size; i += 2) {
-    repeatchar((size - i) / 2, ' ');
-    repeatchar(i, '*');
-    printf("\n");
-  }
+  p(12, '*');
+  //  printf("hello world");
   return 0;
 }

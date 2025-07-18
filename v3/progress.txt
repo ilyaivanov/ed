@@ -1,2 +1,22 @@
 Replace helix
-Create a simple notepad with the ability to run a console app inside
+  y Create a simple notepad with the ability to run a console app inside
+  y Typography
+     - TextOut into global bitmap
+     - Paint into it
+     - No need to call InvalidateRect
+     - Animation should work
+     - Test performance
+  - Basic motions from Vim/Helix
+  - Undo/redo
+  - Tree code nav
+  - Collapse parts of the code
+  - Split view (at least 2 buffers)
+  - Autorun/autoformat
+  - Search 
+  - Cursor history
+  - Multiple cursors
+  - Motions
+ 
+Learning stuff
+  - Casey Muratori – The Big OOPs: Anatomy of a Thirty-five-year Mistake – BSC 2025
+     https://www.youtube.com/watch?v=wo84LFzx5nI

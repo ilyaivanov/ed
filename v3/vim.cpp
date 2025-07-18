@@ -1,5 +1,6 @@
 #pragma once
 #include "math.cpp"
+#include "text.cpp"
 
 u32 IsWhitespace(char ch) {
   return ch == ' ' || ch == '\n';
@@ -85,4 +86,26 @@ i32 JumpWordWithPunctuationBackward(char* text, i32 size, i32 pos) {
     pos--;
 
   return pos;
+}
+
+i32 FindLineEnd(Buffer* buffer, i32 pos) {
+  while (pos < buffer->size && buffer->file[pos] != '\n')
+    pos++;
+
+  return pos;
+}
+
+i32 FindLineStart(Buffer* buffer, i32 pos) {
+  while (pos > 0 && buffer->file[pos - 1] != '\n')
+    pos--;
+
+  return pos;
+}
+
+i32 GetOffsetForLineAt(Buffer* buffer, i32 pos) {
+  i32 start = FindLineStart(buffer, pos);
+  i32 p = start;
+  while (buffer->file[p] == ' ')
+    p++;
+  return p - start;
 }
