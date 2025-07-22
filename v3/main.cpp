@@ -1,10 +1,9 @@
+#include "commands.cpp"
 #include "math.cpp"
 #include "text.cpp"
 #include "vim.cpp"
 #include "win32.cpp"
-#include <bcrypt.h>
 #include <stdio.h>
-#include <winuser.h>
 
 Window window;
 u32 color = 0xcccccc;
@@ -21,18 +20,13 @@ TEXTMETRIC textMetric;
 HBITMAP canvasBitmap;
 HDC currentDc;
 
-enum Mode { Normal, Insert, Visual };
-
 Mode mode = Normal;
 HFONT smallFont;
 HFONT font;
 HFONT titleFont;
 
-i32 cursorPos = 0;
-i32 desiredOffset = 0;
 i32 ignoreNextCharEvent; // this is used to ignore char event which comes immeidatelly after
 f32 buildTimeMs;
-i32 selectionStart = -1;
 // entering insert mode
 
 Buffer* selectedBuffer;
@@ -40,6 +34,7 @@ Buffer leftBuffer;
 Buffer buffer;
 Buffer textBuffer;
 Buffer outBuffer;
+
 enum OutBufferTab { Stats = 0, Output, Logs, Errors };
 OutBufferTab selectedTab = Stats;
 
@@ -47,7 +42,7 @@ i32 hasErrors;
 char* output;
 i32 outputLen;
 
-// ChangeArena changes;
+void UpdateCursor(i32 c) {}
 
 u32 ToWinColor(u32 color) {
   return ((color & 0xff0000) >> 16) | (color & 0x00ff00) | ((color & 0x0000ff) << 16);
@@ -58,14 +53,15 @@ void TextColors(u32 foreground, u32 background) {
   SetTextColor(currentDc, ToWinColor(foreground));
 }
 
-void ReadFileIntoDoubledSizedBuffer(const char* path, Buffer* b) {
-  i64 filesize = GetMyFileSize(path);
+void ReadFileIntoDoubledSizedBuffer(Buffer* b) {
+  i64 filesize = GetMyFileSize(b->path);
   char* filetemp = (char*)VirtualAllocateMemory(filesize);
-  ReadFileInto(path, filesize, filetemp);
+  ReadFileInto(b->path, filesize, filetemp);
 
   b->capacity = filesize * 2;
   b->size = 0;
   b->file = (char*)VirtualAllocateMemory(b->capacity);
+  b->isSaved = true;
   for (i32 i = 0; i < filesize; i++) {
     if (filetemp[i] != '\r')
       b->file[b->size++] = filetemp[i];
@@ -79,7 +75,7 @@ void InitFileBuffer(const char* path, Buffer* b) {
   b->changes.contents = (Change*)VirtualAllocateMemory(b->changes.capacity);
   b->changes.lastChangeIndex = -1;
 
-  ReadFileIntoDoubledSizedBuffer(path, b);
+  ReadFileIntoDoubledSizedBuffer(b);
 }
 
 HFONT CreateFont(i32 fontSize, i32 weight) {
@@ -110,112 +106,64 @@ void Init() {
   GetTextMetricsA(currentDc, &textMetric);
 }
 
-void MoveDown() {
-  i32 end = FindLineEnd(selectedBuffer, cursorPos);
-  i32 nextEnd = FindLineEnd(selectedBuffer, end + 1);
-
-  // cursorPos = end;
-  cursorPos = MinI32(end + 1 + desiredOffset, nextEnd);
-  if (cursorPos >= selectedBuffer->size)
-    cursorPos = selectedBuffer->size;
-}
-
-void MoveUp() {
-  i32 prevLineStart = FindLineStart(selectedBuffer, FindLineStart(selectedBuffer, cursorPos) - 1);
-  if (prevLineStart < 0)
-    prevLineStart = 0;
-
-  i32 prevLineEnd = FindLineEnd(selectedBuffer, prevLineStart);
-  cursorPos = MinI32(prevLineStart + desiredOffset, prevLineEnd);
-
-  if (cursorPos < 0)
-    cursorPos = 0;
-}
-
-void MoveLeft() {
-  if (cursorPos > 0) {
-    cursorPos--;
-    desiredOffset = cursorPos - FindLineStart(selectedBuffer, cursorPos);
-  }
-}
-
-void MoveRight() {
-  if (cursorPos < (selectedBuffer->size - 1)) {
-    cursorPos++;
-    desiredOffset = cursorPos - FindLineStart(selectedBuffer, cursorPos);
-  }
-}
-
 void InsertCharAt(char ch, i32 pos) {
-  if (selectedBuffer->size >= selectedBuffer->capacity) {
-    i32 newCapacity = selectedBuffer->capacity * 2;
-    char* newMemory = (char*)VirtualAllocateMemory(newCapacity);
-    selectedBuffer->capacity = newCapacity;
-    memmove(newMemory, selectedBuffer->file, selectedBuffer->size);
-    VirtualFreeMemory(selectedBuffer->file);
-    selectedBuffer->file = newMemory;
-  }
-  memmove(selectedBuffer->file + pos + 1, selectedBuffer->file + pos, selectedBuffer->size - pos);
-  selectedBuffer->file[pos] = ch;
-  selectedBuffer->size++;
+  InsertChars(selectedBuffer, &ch, 1, pos);
 }
 
 void InsertCharAtCursor(char ch) {
-  InsertCharAt(ch, cursorPos);
-  cursorPos++;
-  desiredOffset = cursorPos - FindLineStart(selectedBuffer, cursorPos);
+  InsertCharAt(ch, selectedBuffer->cursorPos);
+  UpdateCursor(selectedBuffer->cursorPos + 1);
 }
 
-void AddLineAbove() {
-  i32 offset = GetOffsetForLineAt(selectedBuffer, cursorPos);
-  i32 start = FindLineStart(selectedBuffer, cursorPos);
-  InsertCharAt('\n', start);
+// void AddLineAbove() {
+//   i32 offset = GetOffsetForLineAt(selectedBuffer, selectedBuffer->cursorPos);
+//   i32 start = FindLineStart(selectedBuffer, selectedBuffer->cursorPos);
+//   InsertCharAt('\n', start);
 
-  for (i32 i = 0; i < offset; i++)
-    InsertCharAt(' ', start + i);
-  cursorPos = start + offset;
-  desiredOffset = cursorPos - FindLineStart(selectedBuffer, cursorPos);
-  mode = Insert;
-  ignoreNextCharEvent = 1;
-}
+//   for (i32 i = 0; i < offset; i++)
+//     InsertCharAt(' ', start + i);
+//   UpdateCursor(start + offset);
+//   mode = Insert;
+//   ignoreNextCharEvent = 1;
+// }
 
 void AddLineBelow() {
-  i32 offset = GetOffsetForLineAt(selectedBuffer, cursorPos);
-  i32 end = FindLineEnd(selectedBuffer, cursorPos);
+  i32 offset = GetOffsetForLineAt(selectedBuffer, selectedBuffer->cursorPos);
+  i32 end = FindLineEnd(selectedBuffer, selectedBuffer->cursorPos);
   InsertCharAt('\n', end);
 
   for (i32 i = 0; i < offset; i++)
     InsertCharAt(' ', end + i + 1);
-  cursorPos = end + offset + 1;
-  desiredOffset = cursorPos - FindLineStart(selectedBuffer, cursorPos);
+  UpdateCursor(end + offset + 1);
   mode = Insert;
   ignoreNextCharEvent = 1;
 }
 
 void AddLineInside() {
-  i32 offset = GetOffsetForLineAt(selectedBuffer, cursorPos);
-  i32 end = FindLineEnd(selectedBuffer, cursorPos);
+  i32 offset = GetOffsetForLineAt(selectedBuffer, selectedBuffer->cursorPos);
+  i32 end = FindLineEnd(selectedBuffer, selectedBuffer->cursorPos);
   InsertCharAt('\n', end);
   offset += 2;
 
   for (i32 i = 0; i < offset; i++)
     InsertCharAt(' ', end + i + 1);
-  cursorPos = end + offset + 1;
-  desiredOffset = cursorPos - FindLineStart(selectedBuffer, cursorPos);
+  UpdateCursor(end + offset + 1);
   mode = Insert;
   ignoreNextCharEvent = 1;
 }
 
 void SaveBuffer(Buffer* buffer) {
-  if (buffer->path)
+  if (buffer->path) {
     WriteMyFile((char*)buffer->path, buffer->file, buffer->size);
+    buffer->isSaved = true;
+  }
 }
 
 void Run() {
   i64 start = GetPerfCounter();
   SaveBuffer(&leftBuffer);
   SaveBuffer(&buffer);
-  
+
   char* s = (char*)"cmd /c clang console.cpp";
   RunCommand(s, output, &outputLen);
 
@@ -232,16 +180,38 @@ void Run() {
   buildTimeMs = f32(end - start) * 1000.0f / (f32)GetPerfFrequency();
 }
 
+void FormatCode() {
+  SaveBuffer(selectedBuffer);
+  char s[255] = {0};
+  sprintf(s, "cmd /c clang-format console.cpp --cursor=%d", selectedBuffer->cursorPos);
+  RunCommand(s, output, &outputLen);
+  char* t = output;
+  i32 start = 0;
+  while (t[start] != '\n')
+    start++;
+  start++;
+  i32 newLen = outputLen - start;
+  // Replace text action
+  memmove(selectedBuffer->file, output + start, newLen);
+  selectedBuffer->size = newLen;
+  selectedBuffer->isSaved = false;
+
+  // 12 here is the index of new cursor position in JSON response { "Cursor": 36
+  // I don;t want to parse entire JSON yet
+  int newCursor = atoi(output + 12);
+  UpdateCursor(newCursor);
+}
+
 void RemoveChar() {
-  if (cursorPos > 0) {
-    RemoveChars(selectedBuffer, cursorPos - 1, cursorPos - 1);
-    cursorPos--;
+  if (selectedBuffer->cursorPos > 0) {
+    RemoveChars(selectedBuffer, selectedBuffer->cursorPos - 1, selectedBuffer->cursorPos - 1);
+    UpdateCursor(selectedBuffer->cursorPos - 1);
   }
 }
 
 void RemoveCharFromRight() {
-  if (cursorPos < (selectedBuffer->size - 1)) {
-    RemoveChars(selectedBuffer, cursorPos, cursorPos);
+  if (selectedBuffer->cursorPos < (selectedBuffer->size - 1)) {
+    RemoveChars(selectedBuffer, selectedBuffer->cursorPos, selectedBuffer->cursorPos);
   }
 }
 
@@ -261,67 +231,139 @@ void Size(LPARAM lParam) {
   SelectObject(currentDc, canvasBitmap);
 }
 
-void UpdateCursor(i32 pos) {
-  cursorPos = pos;
-  desiredOffset = cursorPos - FindLineStart(selectedBuffer, cursorPos);
-}
-
-void HandleMovement(WPARAM wParam) {
-  if (wParam == 'L')
-    MoveRight();
-  if (wParam == 'H')
-    MoveLeft();
-  if (wParam == 'J')
-    MoveDown();
-  if (wParam == 'K')
-    MoveUp();
-  if (wParam == 'B' && IsKeyPressed(VK_SHIFT))
-    UpdateCursor(
-        JumpWordWithPunctuationBackward(selectedBuffer->file, selectedBuffer->size, cursorPos));
-  else if (wParam == 'B')
-    UpdateCursor(JumpWordBackward(selectedBuffer->file, selectedBuffer->size, cursorPos));
-  if (wParam == 'W' && IsKeyPressed(VK_SHIFT))
-    UpdateCursor(
-        JumpWordWithPunctuationForward(selectedBuffer->file, selectedBuffer->size, cursorPos));
-  else if (wParam == 'W')
-    UpdateCursor(JumpWordForward(selectedBuffer->file, selectedBuffer->size, cursorPos));
-}
-
-void HandleNormalAndVisualCommands(WPARAM wParam) {
-  HandleMovement(wParam);
-  if (wParam == 'Q') {
-    PostQuitMessage(0);
-    window.isTerminated = 1;
-  }
-}
-
-void RemoveSelection() {
-  i32 selectionLeft = MinI32(selectionStart, cursorPos);
-  i32 selectionRight = MaxI32(selectionStart, cursorPos);
-
-  RemoveChars(selectedBuffer, selectionLeft, selectionRight);
-  cursorPos = selectionLeft;
-  desiredOffset = cursorPos - FindLineStart(selectedBuffer, cursorPos);
-}
-
 void CopySelection() {
-  i32 selectionLeft = MinI32(selectionStart, cursorPos);
-  i32 selectionRight = MaxI32(selectionStart, cursorPos);
-  ClipboardCopy(window.windowHandle, selectedBuffer->file + selectionLeft,
-                selectionRight - selectionLeft + 1);
+  // SelectionRange range = GetSelectionRange();
+  // ClipboardCopy(window.windowHandle, selectedBuffer->file + range.start,
+  //               range.end - range.start + 1);
 }
 
 void PasteFromClipboard() {
   i32 size = 0;
   char* textBuffer = ClipboardPaste(window.windowHandle, &size);
-  InsertChars(selectedBuffer, textBuffer, size, cursorPos);
-  cursorPos += size;
+  InsertChars(selectedBuffer, textBuffer, size, selectedBuffer->cursorPos);
+  selectedBuffer->cursorPos += size;
 
   VirtualFreeMemory(textBuffer);
 }
 
-LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
+void FinishCommand() {
+  currentCommandLen = 0;
+}
 
+bool IsSingleCharAlt(char ch) {
+  return currentCommand[0].ch == 'f' && currentCommand[0].alt;
+}
+
+// void TryRunCommand() {
+//   Key lastKey = currentCommand[currentCommandLen];
+//   if (mode == Insert && IsPrintable(lastKey.ch)) {
+//     InsertCharAtCursor(lastKey.ch);
+//   } else {
+//     if (IsLastCommand(VK_ESCAPE)) {
+//       if (mode != Normal) {
+//         if (mode == Insert)
+//           FinishAndSaveCommand();
+
+//         mode = Normal;
+//       }
+//     }
+//     if (IsLastCommand('i'))
+//       mode = Insert;
+//     if (IsLastCommand('v')) {
+//       mode = Visual;
+//       selectedBuffer->selectionStart = selectedBuffer->cursorPos;
+//     }
+//     if (IsLastCommand('V')) {
+//       mode = VisualLine;
+//       selectedBuffer->selectionStart = selectedBuffer->cursorPos;
+//     }
+
+//     if (IsLastCommand('d')) {
+//       if (mode == Visual || mode == VisualLine) {
+//         RemoveSelection();
+//         mode = Normal;
+//         FinishAndSaveCommand();
+//       }
+//     }
+//     if (IsSingleCharAlt('f')) {
+//       FormatCode();
+//       FinishCommand();
+//     }
+//     if (IsSingleCharAlt('r')) {
+//       Run();
+//       FinishCommand();
+//     }
+
+//     if (IsLastCommand('X'))
+//       RemoveChar();
+//     if (IsLastCommand('x'))
+//       RemoveCharFromRight();
+//     if (IsLastCommand('o')) {
+//       if (mode == Normal)
+//         AddLineBelow();
+//       else if (mode == Visual || mode == VisualLine) {
+//         i32 temp = selectedBuffer->selectionStart;
+//         selectedBuffer->selectionStart = selectedBuffer->cursorPos;
+//         UpdateCursor(temp);
+//       }
+//     }
+//     if (IsLastCommand('c') && (mode == Visual || mode == VisualLine)) {
+//       RemoveSelection();
+//       AddLineAbove();
+//     }
+
+//     if (IfSingleCommandFinish("O"))
+//       AddLineAbove();
+//     if (IfSingleCommandFinish("q"))
+//       Quit();
+//     if (IfSingleCommandFinish("l"))
+//       MoveRight();
+//     if (IfSingleCommandFinish("h"))
+//       MoveLeft();
+//     if (IfSingleCommandFinish("j"))
+//       MoveDown();
+//     if (IfSingleCommandFinish("k"))
+//       MoveUp();
+//     if (IfSingleCommandFinish("B"))
+//       UpdateCursor(JumpWordWithPunctuationBackward(selectedBuffer));
+//     if (IfSingleCommandFinish("b"))
+//       UpdateCursor(JumpWordBackward(selectedBuffer));
+//     if (IfSingleCommandFinish("W"))
+//       UpdateCursor(JumpWordWithPunctuationForward(selectedBuffer));
+//     if (IfSingleCommandFinish("w"))
+//       UpdateCursor(JumpWordForward(selectedBuffer));
+//   }
+// }
+
+void RepeartLastCommand();
+void AppendKey2(Key key) {
+  if (key.ch == '.' && currentCommandLen == 0) {
+    RepeartLastCommand();
+  } else {
+    currentCommand[currentCommandLen] = key;
+    currentCommandLen++;
+    // TryRunCommand();
+  }
+}
+
+void RepeartLastCommand() {
+  currentCommandLen = 0;
+  for (i32 i = 0; i < lastCommandLen; i++) {
+    AppendKey(lastCommand[i], selectedBuffer, &mode, &window);
+  }
+}
+
+void OnKeyPressed(u64 ch) {
+  Key key = {
+      .ctrl = IsKeyPressed(VK_CONTROL),
+      .alt = IsKeyPressed(VK_MENU),
+      .ch = ch,
+  };
+
+  AppendKey(key, selectedBuffer, &mode, &window);
+}
+
+LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
   switch (message) {
   case WM_SYSCOMMAND: {
     // handle alt
@@ -330,112 +372,120 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
     }
     break;
   }
+  case WM_SYSCHAR:
   case WM_CHAR: {
-    if (ignoreNextCharEvent)
-      ignoreNextCharEvent = 0;
-    else if (mode == Insert && wParam >= ' ' && wParam <= 126)
-      InsertCharAtCursor(wParam);
+    if (IsPrintable(wParam))
+      OnKeyPressed(wParam);
+    // if (ignoreNextCharEvent)
+    //   ignoreNextCharEvent = 0;
+    // else if (mode == Insert && wParam >= ' ' && wParam <= 126)
+    //   InsertCharAtCursor(wParam);
     break;
   }
   case WM_KEYDOWN:
   case WM_SYSKEYDOWN:
-    if (wParam == VK_F11) {
-      window.isFullscreen = !window.isFullscreen;
-      SetFullscreen(window.windowHandle, window.isFullscreen);
-    }
-    if (mode == Normal) {
-      HandleNormalAndVisualCommands(wParam);
+    // assume this won't generate WM_CHAR nor WM_SYSCHAR events by OS
+    if (wParam == VK_ESCAPE || (IsKeyPressed(VK_CONTROL) && IsPrintable(wParam)))
+      OnKeyPressed(wParam);
+    // if (wParam == VK_F11) {
+    //   window.isFullscreen = !window.isFullscreen;
+    //   SetFullscreen(window.windowHandle, window.isFullscreen);
+    // }
+    // if (mode == Normal) {
+    //   HandleNormalAndVisualCommands(wParam);
 
-      if (wParam >= '1' && wParam <= '4') {
-        if (IsKeyPressed(VK_SHIFT) && IsKeyPressed(VK_MENU)) {
-          if (wParam == '1')
-            selectedTab = Stats;
-          if (wParam == '2')
-            selectedTab = Output;
-          if (wParam == '3')
-            selectedTab = Logs;
-          if (wParam == '4')
-            selectedTab = Errors;
-        } else if (IsKeyPressed(VK_MENU)) {
+    //   if (wParam >= '1' && wParam <= '4') {
+    //     if (IsKeyPressed(VK_SHIFT) && IsKeyPressed(VK_MENU)) {
+    //       if (wParam == '1')
+    //         selectedTab = Stats;
+    //       if (wParam == '2')
+    //         selectedTab = Output;
+    //       if (wParam == '3')
+    //         selectedTab = Logs;
+    //       if (wParam == '4')
+    //         selectedTab = Errors;
+    //     } else if (IsKeyPressed(VK_MENU)) {
 
-          if (wParam == '1')
-            selectedBuffer = &leftBuffer;
-          if (wParam == '2')
-            selectedBuffer = &buffer;
-          if (wParam == '4')
-            selectedBuffer = &textBuffer;
-        }
-        // if(wParam == '1')
-        // selectedBuffer = &leftBuffer;
-      }
-      if (wParam == 'V') {
-        selectionStart = cursorPos;
-        mode = Visual;
-      }
-      if (wParam == 'I') {
-        mode = Insert;
-        ignoreNextCharEvent = 1;
-      }
-      if (wParam == 'O' && IsKeyPressed(VK_CONTROL))
-        AddLineInside();
-      else if (wParam == 'O' && IsKeyPressed(VK_SHIFT))
-        AddLineAbove();
-      else if (wParam == 'O')
-        AddLineBelow();
-      if (wParam == 'R' && IsKeyPressed(VK_MENU))
-        Run();
+    //       if (wParam == '1')
+    //         selectedBuffer = &leftBuffer;
+    //       if (wParam == '2')
+    //         selectedBuffer = &buffer;
+    //       if (wParam == '4')
+    //         selectedBuffer = &textBuffer;
+    //     }
+    //     // if(wParam == '1')
+    //     // selectedBuffer = &leftBuffer;
+    //   }
+    //   if (wParam == 'V') {
+    //     selectionStart = selectedBuffer->cursorPos;
+    //     mode = Visual;
+    //   }
+    //   if (wParam == 'I') {
+    //     mode = Insert;
+    //     ignoreNextCharEvent = 1;
+    //   }
+    //   if (wParam == 'S' && IsKeyPressed(VK_MENU))
+    //     SaveBuffer(selectedBuffer);
+    //   if (wParam == 'O' && IsKeyPressed(VK_CONTROL))
+    //     AddLineInside();
+    //   else if (wParam == 'O' && IsKeyPressed(VK_SHIFT))
+    //     AddLineAbove();
+    //   else if (wParam == 'O')
+    //     AddLineBelow();
+    //   if (wParam == 'R' && IsKeyPressed(VK_MENU))
+    //     Run();
 
-      if (wParam == VK_BACK)
-        RemoveChar();
-      if (wParam == 'D')
-        RemoveCharFromRight();
-      if (wParam == 'P')
-        PasteFromClipboard();
+    //   if (wParam == VK_BACK)
+    //     RemoveChar();
+    //   if (wParam == 'D')
+    //     RemoveCharFromRight();
+    //   if (wParam == 'P')
+    //     PasteFromClipboard();
 
-      if (wParam == 'U' && IsKeyPressed(VK_SHIFT)) {
-        Change* c = RedoLastChange(selectedBuffer);
+    //   if (wParam == 'U' && IsKeyPressed(VK_SHIFT)) {
+    //     Change* c = RedoLastChange(selectedBuffer);
 
-        if (c)
-          UpdateCursor(c->at);
-      } else if (wParam == 'U') {
-        Change* c = UndoLastChange(selectedBuffer);
-        if (c)
-          UpdateCursor(c->at);
-      }
-      if (wParam == VK_RETURN)
-        InsertCharAtCursor('\n');
-    } else if (mode == Insert) {
-      if (wParam == VK_ESCAPE)
-        mode = Normal;
-      if (wParam == VK_BACK) {
-        RemoveChar();
-      }
-      if (wParam == 'V' && IsKeyPressed(VK_CONTROL))
-        PasteFromClipboard();
-      if (wParam == VK_RETURN)
-        InsertCharAtCursor('\n');
-    } else if (mode == Visual) {
-      HandleNormalAndVisualCommands(wParam);
+    //     if (c)
+    //       UpdateCursor(c->at);
+    //   } else if (wParam == 'U') {
+    //     Change* c = UndoLastChange(selectedBuffer);
+    //     if (c)
+    //       UpdateCursor(c->at);
+    //   }
+    //   if (wParam == VK_RETURN)
+    //     InsertCharAtCursor('\n');
+    // } else if (mode == Insert) {
+    //   if (wParam == VK_ESCAPE)
+    //     mode = Normal;
+    //   if (wParam == VK_BACK) {
+    //     RemoveChar();
+    //   }
+    //   if (wParam == 'V' && IsKeyPressed(VK_CONTROL))
+    //     PasteFromClipboard();
+    //   if (wParam == VK_RETURN)
+    //     InsertCharAtCursor('\n');
+    // } else if (mode == Visual) {
+    //   HandleNormalAndVisualCommands(wParam);
 
-      if (wParam == VK_ESCAPE) {
-        mode = Normal;
-        selectionStart = -1;
-      }
-      if (wParam == 'D') {
-        RemoveSelection();
-        mode = Normal;
-        selectionStart = -1;
-      }
-      if (wParam == 'Y') {
-        CopySelection();
-      }
-      if (wParam == 'P') {
-        RemoveSelection();
-        mode = Normal;
-        selectionStart = -1;
-        PasteFromClipboard();
-      }
-    }
+    //   if (wParam == VK_ESCAPE) {
+    //     mode = Normal;
+    //     selectionStart = -1;
+    //   }
+    //   if (wParam == 'D') {
+    //     RemoveSelection();
+    //     mode = Normal;
+    //     selectionStart = -1;
+    //   }
+    //   if (wParam == 'Y') {
+    //     CopySelection();
+    //   }
+    //   if (wParam == 'P') {
+    //     RemoveSelection();
+    //     mode = Normal;
+    //     selectionStart = -1;
+    //     PasteFromClipboard();
+    //   }
+    // }
     break;
   case WM_DESTROY:
     PostQuitMessage(0);
@@ -485,6 +535,40 @@ void PrintParagraph(i32 x, i32 y, char* ch, i32 len) {
   }
 }
 
+i32 FormatKey(u64 ch, char* buff) {
+  if (IsPrintable(ch))
+    return sprintf(buff, "%c", (char)ch);
+  else {
+
+    const char* s = "<NAN>";
+
+    if (ch == VK_ESCAPE)
+      s = "<Esc>";
+
+    return sprintf(buff, "%s", s);
+  }
+}
+
+i32 FormatCommand(Key* commands, i32 len, char* buffer) {
+  i32 c = 0;
+  for (i32 i = 0; i < len; i++) {
+    char ch = commands[i].ch;
+    char keyBuff[64] = {0};
+    FormatKey(ch, keyBuff);
+
+    if (commands[i].ctrl && commands[i].alt)
+      c += sprintf(buffer + c, "<CA-%s>", keyBuff);
+    else if (commands[i].ctrl)
+      c += sprintf(buffer + c, "<C-%s>", keyBuff);
+    else if (commands[i].alt)
+      c += sprintf(buffer + c, "<A-%s>", keyBuff);
+    else {
+      c += sprintf(buffer + c, "%s", keyBuff);
+    }
+  }
+  return c;
+}
+
 f32 measurements[100];
 i32 currentMeasurement;
 void PrintFrameStats(Rect rect) {
@@ -501,14 +585,19 @@ void PrintFrameStats(Rect rect) {
   if (count != 0)
     average = total / (f32)count;
 
-  char foo[255];
-  i32 l = sprintf(foo,
+  char statsFormatted[255] = {0};
+  char commandFormatted[255] = {0};
+  FormatCommand(currentCommand, currentCommandLen, commandFormatted);
+  char lastCommandFormatted[255] = {0};
+  FormatCommand(lastCommand, lastCommandLen, lastCommandFormatted);
+  i32 l = sprintf(statsFormatted,
                   "Frame: %0.1fms  Build: %0.1fms\nBuffer len: %d, cap: %d\nChanges current: %d, "
-                  "total: %d, occupied: %d, cap: %d",
+                  "total: %d, occupied: %d, cap: %d\nCommand: %s\nLast command: %s",
                   average * 1000.0f, buildTimeMs, selectedBuffer->size, selectedBuffer->capacity,
                   selectedBuffer->changes.lastChangeIndex, selectedBuffer->changes.changesCount,
-                  GetChangeArenaSize(&selectedBuffer->changes), selectedBuffer->changes.capacity);
-  PrintParagraph(rect.x + hPadding, rect.y + vPadding, foo, l);
+                  GetChangeArenaSize(&selectedBuffer->changes), selectedBuffer->changes.capacity,
+                  commandFormatted, lastCommandFormatted);
+  PrintParagraph(rect.x + hPadding, rect.y + vPadding, statsFormatted, l);
   // TextOutA(currentDc, 10, window.height - textMetric.tmHeight * lineHeight, &foo[0], l);
 }
 
@@ -538,7 +627,8 @@ i32 CharWidth() {
 
 void ShowBufferInRect(Rect rect, Buffer* buffer) {
   SelectFont(currentDc, titleFont);
-  TextColors(0x333333, bg);
+  u32 fileColor = buffer->isSaved ? 0x2222222 : 0x402222;
+  TextColors(fileColor, bg);
   i32 titleWidth = strlen(buffer->path) * CharWidth() + 10.0f;
   TextOut(currentDc, rect.x + rect.width - titleWidth, rect.y + 10, buffer->path,
           strlen(buffer->path));
@@ -570,15 +660,16 @@ void ShowBufferInRect(Rect rect, Buffer* buffer) {
 
   if (selectedBuffer == buffer) {
 
-    TextPos textPos = GetTextPos(cursorPos);
+    TextPos textPos = GetTextPos(selectedBuffer->cursorPos);
     f32 cursorX = rect.x + hPadding + (f32)textPos.offset * (f32)charWidth;
     f32 cursorY = rect.y + vPadding + textPos.line * textMetric.tmHeight * lineHeight;
 
     // print selection
-    if (mode == Visual && selectionStart >= 0) {
+    if ((mode == Visual || mode == VisualLine) && selectedBuffer->selectionStart >= 0) {
 
-      i32 selectionLeft = MinI32(selectionStart, cursorPos);
-      i32 selectionRight = MaxI32(selectionStart, cursorPos);
+      SelectionRange range = GetSelectionRange(selectedBuffer, mode);
+      i32 selectionLeft = range.start;
+      i32 selectionRight = range.end;
 
       TextPos sel1 = GetTextPos(selectionLeft);
       f32 x1 = rect.x + hPadding + (f32)sel1.offset * (f32)charWidth;
@@ -597,14 +688,14 @@ void ShowBufferInRect(Rect rect, Buffer* buffer) {
 
     u32 textColorUnderCurosr = 0x000000;
     // print cursor
-    if (mode == Normal || mode == Visual) {
+    if (mode == Normal || mode == Visual || mode == VisualLine) {
       u32 cursorColor = 0xFFDC32;
-      if (mode == Visual)
+      if (mode == Visual || mode == VisualLine)
         cursorColor = 0x32DCff;
       PaintRect(V2{cursorX, cursorY}, charWidth, textMetric.tmHeight, cursorColor);
 
       TextColors(textColorUnderCurosr, cursorColor);
-      TextOutA(currentDc, cursorX, cursorY, ch + cursorPos, 1);
+      TextOutA(currentDc, cursorX, cursorY, ch + selectedBuffer->cursorPos, 1);
     } else if (mode == Insert) {
       f32 barWidth = 2.0f;
       PaintRect(V2{cursorX - barWidth / 2, cursorY}, barWidth, textMetric.tmHeight, 0xff2222);
@@ -710,7 +801,3 @@ int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int n
   }
   return 0;
 }
-
-// 12.0ms for textout (9.3 without bitblit)
-// 5.0ms for printstr (2.3 without bitblit)
-// 2.7ms for bitblit

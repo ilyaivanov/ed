@@ -1,6 +1,11 @@
 #pragma once
 #include "math.cpp"
 #include "text.cpp"
+#include <stdio.h>
+
+bool IsPrintable(u64 val) {
+  return val >= ' ' && val <= '~';
+}
 
 u32 IsWhitespace(char ch) {
   return ch == ' ' || ch == '\n';
@@ -24,7 +29,10 @@ u32 IsPunctuation(char ch) {
   return 0;
 }
 
-i32 JumpWordForward(char* text, i32 size, i32 pos) {
+i32 JumpWordForward(Buffer* buffer) {
+  char* text = buffer->file;
+  i32 size = buffer->size;
+  i32 pos = buffer->cursorPos;
   if (IsWhitespace(text[pos])) {
     while (pos < size && IsWhitespace(text[pos]))
       pos++;
@@ -43,7 +51,10 @@ i32 JumpWordForward(char* text, i32 size, i32 pos) {
   return pos;
 }
 
-i32 JumpWordBackward(char* text, i32 size, i32 pos) {
+i32 JumpWordBackward(Buffer* buffer) {
+  char* text = buffer->file;
+  i32 size = buffer->size;
+  i32 pos = buffer->cursorPos;
   pos = MaxI32(pos - 1, 0);
   i32 isStartedAtWhitespace = IsWhitespace(text[pos]);
 
@@ -67,7 +78,10 @@ i32 JumpWordBackward(char* text, i32 size, i32 pos) {
   return pos;
 }
 
-i32 JumpWordWithPunctuationForward(char* text, i32 size, i32 pos) {
+i32 JumpWordWithPunctuationForward(Buffer* buffer) {
+  char* text = buffer->file;
+  i32 size = buffer->size;
+  i32 pos = buffer->cursorPos;
   while (pos < size && !IsWhitespace(text[pos]))
     pos++;
 
@@ -77,7 +91,10 @@ i32 JumpWordWithPunctuationForward(char* text, i32 size, i32 pos) {
   return pos;
 }
 
-i32 JumpWordWithPunctuationBackward(char* text, i32 size, i32 pos) {
+i32 JumpWordWithPunctuationBackward(Buffer* buffer) {
+  char* text = buffer->file;
+  i32 size = buffer->size;
+  i32 pos = buffer->cursorPos;
   pos = MaxI32(pos - 1, 0);
   while (pos > 0 && IsWhitespace(text[pos]))
     pos--;

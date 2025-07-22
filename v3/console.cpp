@@ -1,11 +1,15 @@
 #include <stdio.h>
 
-void p(int c, char ch) {
-  for (int i = 0; i < c; i++)
-    printf("%c", ch);
+void foo() {
+  printf("hi there");
+}
+void bar() {
+  printf("bar");
 }
 int main() {
-  p(12, '*');
-  //  printf("hello world");
+  int a = 2;
+  foo();
+  bar();
+  printf("hi there %d", a);
   return 0;
 }

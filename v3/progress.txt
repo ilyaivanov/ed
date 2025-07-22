@@ -6,6 +6,9 @@ Replace helix
      - No need to call InvalidateRect
      - Animation should work
      - Test performance
+         - 12.0ms for textout (9.3 without bitblit)
+         - 5.0ms for printstr (2.3 without bitblit)
+         - 2.7ms for bitblit
   - Basic motions from Vim/Helix
   - Undo/redo
   - Tree code nav
@@ -16,7 +19,31 @@ Replace helix
   - Cursor history
   - Multiple cursors
   - Motions
- 
+
+Command = Operation? + Motion (Operation is optional)
+ - Commands which modify text can be repeated
+ - Single motions can be repeated separately
+
+Example of motions
+  - Vjd - enter visual line mode, remove two lines, store this for later in .
+  - c2lfoo<Esc> - remove two lines, enter insert mode, enter foo, exit 
+
 Learning stuff
   - Casey Muratori – The Big OOPs: Anatomy of a Thirty-five-year Mistake – BSC 2025
      https://www.youtube.com/watch?v=wo84LFzx5nI
+
+Motion + Operation = Command
+ - Undo
+ - Repeat last motion
+ - Repeat last command
+
+Plan for Motions implementation
+ - hjkl
+ - wWeEbBgegE
+ - fx Fx tX Tx  
+   - add ability to change if ft motions are multiline (hardcode config in the code)
+   - repeat last search ; in same direction and , in opposite direction
+ - G gg 0 $ % ^ 
+ - Add commands like dw or ct)
+ - Add ranges line dib ciB
+

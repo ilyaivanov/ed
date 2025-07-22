@@ -33,9 +33,10 @@ struct Buffer {
   i32 capacity;
   ChangeArena changes;
 
-  i32 hasChanges;
-  // i32 cursorPos;
-  // i32 desiredOffset;
+  bool isSaved;
+  i32 cursorPos;
+  i32 desiredOffset;
+  i32 selectionStart;
 };
 
 i32 ChangeSize(Change* c) {
@@ -133,7 +134,7 @@ void ApplyChange(Buffer* buffer, Change* c) {
   //   BufferRemoveChars(buffer, c->at, c->at + c->size - 1);
   //   BufferInsertChars(buffer, c->text + c->size, c->newTextSize, c->at);
   // }
-  // buffer->isSaved = 0;
+  buffer->isSaved = false;
 }
 
 void UndoChange(Buffer* buffer, Change* c) {
@@ -145,7 +146,7 @@ void UndoChange(Buffer* buffer, Change* c) {
   //   BufferRemoveChars(buffer, c->at, c->newTextSize - 1);
   //   BufferInsertChars(buffer, c->text, c->size, c->at);
   // }
-  // buffer->isSaved = 0;
+  buffer->isSaved = false;
 }
 
 //
