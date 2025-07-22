@@ -41,7 +41,7 @@ bool FinishIfSearchMatch(char searchCommand) {
 }
 
 void HandleMotions(Key key, Buffer* buffer, Mode* mode, Window* window) {
-  i32 nextCursor = -10;
+  i32 nextCursor = -1;
 
   bool doNotUpdateDesiredOffset = false;
 
@@ -59,12 +59,16 @@ void HandleMotions(Key key, Buffer* buffer, Mode* mode, Window* window) {
   if (FinishIfSearchMatch('F'))
     nextCursor = FindIndexOfCharBackward(buffer, buffer->cursorPos - 1, currentCommand[1].ch);
 
-  if (FinishIfSearchMatch('t'))
-    nextCursor = FindIndexOfCharForward(buffer, buffer->cursorPos + 1, currentCommand[1].ch) - 1;
-
-  if (FinishIfSearchMatch('T'))
-    nextCursor = FindIndexOfCharBackward(buffer, buffer->cursorPos - 1, currentCommand[1].ch) + 1;
-
+  if (FinishIfSearchMatch('t')) {
+    nextCursor = FindIndexOfCharForward(buffer, buffer->cursorPos + 1, currentCommand[1].ch);
+    if (nextCursor != -1)
+      nextCursor--;
+  }
+  if (FinishIfSearchMatch('T')) {
+    nextCursor = FindIndexOfCharBackward(buffer, buffer->cursorPos - 1, currentCommand[1].ch);
+    if (nextCursor != -1)
+      nextCursor++;
+  }
   if (FinishIfMatch('h'))
     nextCursor = buffer->cursorPos - 1;
 
