@@ -25,33 +25,47 @@ void FinishAndSaveCommand() {
   currentCommandLen = 0;
 }
 
-bool IsCh(char ch) {
-  return currentCommandLen == 1 && currentCommand[0].ch == ch;
+bool isFinished = false;
+bool FinishIfMatch(char ch) {
+  bool res = currentCommandLen == 1 && currentCommand[0].ch == ch;
+  if (res)
+    isFinished = res;
+  return res;
 }
 
 void HandleMotions(Key key, Buffer* buffer, Mode* mode, Window* window) {
   i32 nextCursor = buffer->cursorPos;
-  bool isFinished = false;
   bool doNotUpdateDesiredOffset = false;
 
-  if (IsCh('j')) {
+  if (FinishIfMatch('j')) {
     nextCursor = MoveDown(buffer);
-    isFinished = true;
     doNotUpdateDesiredOffset = true;
   }
-  if (IsCh('k')) {
+  if (FinishIfMatch('k')) {
     nextCursor = MoveUp(buffer);
-    isFinished = true;
     doNotUpdateDesiredOffset = true;
   }
-  if (IsCh('h')) {
+  if (FinishIfMatch('h'))
     nextCursor = buffer->cursorPos - 1;
-    isFinished = true;
-  }
-  if (IsCh('l')) {
+
+  if (FinishIfMatch('l'))
     nextCursor = buffer->cursorPos + 1;
-    isFinished = true;
-  }
+
+  if (FinishIfMatch('w'))
+    nextCursor = JumpWordForward(buffer);
+  if (FinishIfMatch('e'))
+    nextCursor = JumpToTheEndOfWord(buffer);
+  if (FinishIfMatch('E'))
+    nextCursor = JumpToTheEndOfWordIgnorePunctuation(buffer);
+
+  if (FinishIfMatch('b'))
+    nextCursor = JumpWordBackward(buffer);
+
+  if (FinishIfMatch('W'))
+    nextCursor = JumpWordForwardIgnorePunctuation(buffer);
+
+  if (FinishIfMatch('B'))
+    nextCursor = JumpWordBackwardIgnorePunctuation(buffer);
 
   if (nextCursor != buffer->cursorPos) {
     if (doNotUpdateDesiredOffset)
@@ -59,15 +73,22 @@ void HandleMotions(Key key, Buffer* buffer, Mode* mode, Window* window) {
     else
       UpdateCursor(buffer, nextCursor);
   }
-  if (isFinished)
+  if (isFinished) {
     currentCommandLen = 0;
+    isFinished = false;
+  }
 }
 
 void AppendKey(Key key, Buffer* buffer, Mode* mode, Window* window) {
-  if (key.ch == 'q')
-    Quit(window);
+  if (key.ch == VK_ESCAPE)
+    currentCommandLen = 0;
+  else {
+    currentCommand[currentCommandLen] = key;
+    currentCommandLen++;
 
-  currentCommand[currentCommandLen] = key;
-  currentCommandLen++;
-  HandleMotions(key, buffer, mode, window);
+    if (FinishIfMatch('q'))
+      Quit(window);
+
+    HandleMotions(key, buffer, mode, window);
+  }
 }

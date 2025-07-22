@@ -39,7 +39,7 @@ Motion + Operation = Command
 
 Plan for Motions implementation
  - hjkl
- - wWeEbBgegE
+ - wWeEbBb (postpone ge gE)
  - fx Fx tX Tx  
    - add ability to change if ft motions are multiline (hardcode config in the code)
    - repeat last search ; in same direction and , in opposite direction

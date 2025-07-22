@@ -78,7 +78,7 @@ i32 JumpWordBackward(Buffer* buffer) {
   return pos;
 }
 
-i32 JumpWordWithPunctuationForward(Buffer* buffer) {
+i32 JumpWordForwardIgnorePunctuation(Buffer* buffer) {
   char* text = buffer->file;
   i32 size = buffer->size;
   i32 pos = buffer->cursorPos;
@@ -91,7 +91,7 @@ i32 JumpWordWithPunctuationForward(Buffer* buffer) {
   return pos;
 }
 
-i32 JumpWordWithPunctuationBackward(Buffer* buffer) {
+i32 JumpWordBackwardIgnorePunctuation(Buffer* buffer) {
   char* text = buffer->file;
   i32 size = buffer->size;
   i32 pos = buffer->cursorPos;
@@ -103,6 +103,42 @@ i32 JumpWordWithPunctuationBackward(Buffer* buffer) {
     pos--;
 
   return pos;
+}
+
+i32 JumpToTheEndOfWordIgnorePunctuation(Buffer* buffer) {
+  i32 pos = buffer->cursorPos;
+  char* text = buffer->file;
+  i32 size = buffer->size;
+  pos++;
+
+  while (pos < size && IsWhitespace(text[pos]))
+    pos++;
+
+  while (pos < size && !IsWhitespace(text[pos]))
+    pos++;
+
+  return pos - 1;
+}
+
+i32 JumpToTheEndOfWord(Buffer* buffer) {
+  i32 pos = buffer->cursorPos;
+  char* text = buffer->file;
+  i32 size = buffer->size;
+  pos++;
+
+  while (pos < size && IsWhitespace(text[pos]))
+    pos++;
+
+  if (IsAlphaNumeric(text[pos])) {
+    while (IsAlphaNumeric(text[pos]))
+      pos++;
+  } else {
+
+    while (!IsAlphaNumeric(text[pos]))
+      pos++;
+  }
+
+  return pos - 1;
 }
 
 i32 FindLineEnd(Buffer* buffer, i32 pos) {
