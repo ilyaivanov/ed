@@ -29,7 +29,14 @@ bool isFinished = false;
 bool FinishIfMatch(char ch) {
   bool res = currentCommandLen == 1 && currentCommand[0].ch == ch;
   if (res)
-    isFinished = res;
+    isFinished = true;
+  return res;
+}
+
+bool FinishIfSearchMatch(char searchCommand) {
+  bool res = currentCommandLen == 2 && currentCommand[0].ch == searchCommand;
+  if (res)
+    isFinished = true;
   return res;
 }
 
@@ -46,25 +53,18 @@ void HandleMotions(Key key, Buffer* buffer, Mode* mode, Window* window) {
     nextCursor = MoveUp(buffer);
     doNotUpdateDesiredOffset = true;
   }
-  if (currentCommandLen == 2 && currentCommand[0].ch == 'f') {
-    isFinished = true;
+  if (FinishIfSearchMatch('f'))
     nextCursor = FindIndexOfCharForward(buffer, buffer->cursorPos + 1, currentCommand[1].ch);
-  }
-  
-  if (currentCommandLen == 2 && currentCommand[0].ch == 'F') {
-    isFinished = true;
+
+  if (FinishIfSearchMatch('F'))
     nextCursor = FindIndexOfCharBackward(buffer, buffer->cursorPos - 1, currentCommand[1].ch);
-  }
-  if (currentCommandLen == 2 && currentCommand[0].ch == 't') {
-    isFinished = true;
+
+  if (FinishIfSearchMatch('t'))
     nextCursor = FindIndexOfCharForward(buffer, buffer->cursorPos + 1, currentCommand[1].ch) - 1;
-  }
-  
-  if (currentCommandLen == 2 && currentCommand[0].ch == 'T') {
-    isFinished = true;
+
+  if (FinishIfSearchMatch('T'))
     nextCursor = FindIndexOfCharBackward(buffer, buffer->cursorPos - 1, currentCommand[1].ch) + 1;
-  }
-  
+
   if (FinishIfMatch('h'))
     nextCursor = buffer->cursorPos - 1;
 
@@ -87,7 +87,7 @@ void HandleMotions(Key key, Buffer* buffer, Mode* mode, Window* window) {
   if (FinishIfMatch('B'))
     nextCursor = JumpWordBackwardIgnorePunctuation(buffer);
 
-  if (nextCursor >= 0&& nextCursor != buffer->cursorPos) {
+  if (nextCursor >= 0 && nextCursor != buffer->cursorPos) {
     if (doNotUpdateDesiredOffset)
       UpdateCursorWithoutDesiredOffset(buffer, nextCursor);
     else
