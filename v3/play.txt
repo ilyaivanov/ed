@@ -1,0 +1,3 @@
+foo    bar
+foo and   bar    and another one
+foo a.nd   b,ar    and an!!o,,,,,ther one

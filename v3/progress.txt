@@ -28,10 +28,6 @@ Example of motions
   - Vjd - enter visual line mode, remove two lines, store this for later in .
   - c2lfoo<Esc> - remove two lines, enter insert mode, enter foo, exit 
 
-Learning stuff
-  - Casey Muratori – The Big OOPs: Anatomy of a Thirty-five-year Mistake – BSC 2025
-     https://www.youtube.com/watch?v=wo84LFzx5nI
-
 Motion + Operation = Command
  - Undo
  - Repeat last motion
@@ -42,8 +38,10 @@ Plan for Motions implementation
  - wWeEbBb (postpone ge gE)
  - fx Fx tX Tx  
    - add ability to change if ft motions are multiline (hardcode config in the code)
-   - repeat last search ; in same direction and , in opposite direction
+   x repeat last search ; in same direction and , in opposite direction (postpone)
  - G gg 0 $ % ^ 
  - Add commands like dw or ct)
  - Add ranges line dib ciB
+ - Add numerical ranges like d2w
+ - Add line ranges like dl and d2l (vim equivalent of dd and d2d)
 

@@ -93,7 +93,7 @@ HFONT CreateFont(i32 fontSize, i32 weight) {
 
 void Init() {
   InitFileBuffer("main.cpp", &leftBuffer);
-  InitFileBuffer("console.cpp", &buffer);
+  InitFileBuffer("play.txt", &buffer);
   InitFileBuffer("progress.txt", &textBuffer);
   selectedBuffer = &buffer;
   output = (char*)VirtualAllocateMemory(MB(1));
@@ -759,11 +759,11 @@ void UpdateAndDraw(f32 deltaSec) {
 int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd) {
   PreventWindowsDPIScaling();
 
-  window = {.width = 1400,
+  window = {.width = 1800,
             .height = 1100,
             .bg = 0x222222,
             .title = "Editor",
-            .isFullscreen = 1,
+            .isFullscreen = 0,
             .onEvent = OnEvent};
 
   currentDc = CreateCompatibleDC(0);
