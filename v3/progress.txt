@@ -37,7 +37,7 @@ Plan for Motions implementation
  - hjkl
  - wWeEbBb (postpone ge gE)
  - fx Fx tX Tx  
-   - add ability to change if ft motions are multiline (hardcode config in the code)
+   - add ability to change if ft motions are multiline (hardcode config in the code). This will also affect h l x
    x repeat last search ; in same direction and , in opposite direction (postpone)
  - G gg 0 $ % ^ 
  - Add commands like dw or ct)

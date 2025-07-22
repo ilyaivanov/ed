@@ -1,3 +1,5 @@
 foo    bar
-foo and   bar    and another one
+    a
+    sldfk jjasdfa;dlfk jsa;dlfkj b
+foo and   bar    and another one (some text in brackets) and {in these brackets} and [just in case]
 foo a.nd   b,ar    and an!!o,,,,,ther one

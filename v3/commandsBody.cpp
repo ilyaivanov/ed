@@ -70,6 +70,11 @@ void InsertCharAt(Buffer* buffer, char ch, i32 pos) {
   InsertChars(buffer, &ch, 1, pos);
 }
 
+i32 SkipWhitespace(Buffer* buffer, i32 pos) {
+  while (pos < buffer->size && buffer->file[pos] == ' ')
+    pos++;
+  return pos;
+}
 i32 AddLineAbove(Buffer* buffer) {
   i32 offset = GetOffsetForLineAt(buffer, buffer->cursorPos);
   i32 start = FindLineStart(buffer, buffer->cursorPos);

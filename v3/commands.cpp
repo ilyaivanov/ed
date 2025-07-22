@@ -26,8 +26,21 @@ void FinishAndSaveCommand() {
 }
 
 bool isFinished = false;
-bool FinishIfMatch(char ch) {
-  bool res = currentCommandLen == 1 && currentCommand[0].ch == ch;
+bool FinishIfMatch(const char* ch) {
+  i32 len = strlen(ch);
+
+  bool res = true;
+  if (currentCommandLen == len) {
+    for (i32 i = 0; i < len; i++) {
+      if (currentCommand[i].ch != ch[i]) {
+        res = false;
+        break;
+      }
+    }
+  } else {
+    res = false;
+  }
+
   if (res)
     isFinished = true;
   return res;
@@ -45,14 +58,31 @@ void HandleMotions(Key key, Buffer* buffer, Mode* mode, Window* window) {
 
   bool doNotUpdateDesiredOffset = false;
 
-  if (FinishIfMatch('j')) {
+  if (FinishIfMatch("j")) {
     nextCursor = MoveDown(buffer);
     doNotUpdateDesiredOffset = true;
   }
-  if (FinishIfMatch('k')) {
+  if (FinishIfMatch("k")) {
     nextCursor = MoveUp(buffer);
     doNotUpdateDesiredOffset = true;
   }
+  if (FinishIfMatch("gg")) {
+    nextCursor = ApplyDesiredOffset(buffer, 0);
+    doNotUpdateDesiredOffset = true;
+  }
+  if (FinishIfMatch("G")) {
+    nextCursor = ApplyDesiredOffset(buffer, FindLineStart(buffer, buffer->size - 1));
+    doNotUpdateDesiredOffset = true;
+  }
+  if(FinishIfMatch("0"))
+      nextCursor = FindLineStart(buffer, buffer->cursorPos);
+  
+  if(FinishIfMatch("$"))
+    nextCursor = FindLineEnd(buffer, buffer->cursorPos);
+  
+  if(FinishIfMatch("^"))
+    nextCursor = SkipWhitespace(buffer, FindLineStart(buffer, buffer->cursorPos));
+  
   if (FinishIfSearchMatch('f'))
     nextCursor = FindIndexOfCharForward(buffer, buffer->cursorPos + 1, currentCommand[1].ch);
 
@@ -69,26 +99,26 @@ void HandleMotions(Key key, Buffer* buffer, Mode* mode, Window* window) {
     if (nextCursor != -1)
       nextCursor++;
   }
-  if (FinishIfMatch('h'))
+  if (FinishIfMatch("h"))
     nextCursor = buffer->cursorPos - 1;
 
-  if (FinishIfMatch('l'))
+  if (FinishIfMatch("l"))
     nextCursor = buffer->cursorPos + 1;
 
-  if (FinishIfMatch('w'))
+  if (FinishIfMatch("w"))
     nextCursor = JumpWordForward(buffer);
-  if (FinishIfMatch('e'))
+  if (FinishIfMatch("e"))
     nextCursor = JumpToTheEndOfWord(buffer);
-  if (FinishIfMatch('E'))
+  if (FinishIfMatch("E"))
     nextCursor = JumpToTheEndOfWordIgnorePunctuation(buffer);
 
-  if (FinishIfMatch('b'))
+  if (FinishIfMatch("b"))
     nextCursor = JumpWordBackward(buffer);
 
-  if (FinishIfMatch('W'))
+  if (FinishIfMatch("W"))
     nextCursor = JumpWordForwardIgnorePunctuation(buffer);
 
-  if (FinishIfMatch('B'))
+  if (FinishIfMatch("B"))
     nextCursor = JumpWordBackwardIgnorePunctuation(buffer);
 
   if (nextCursor >= 0 && nextCursor != buffer->cursorPos) {
@@ -110,7 +140,7 @@ void AppendKey(Key key, Buffer* buffer, Mode* mode, Window* window) {
     currentCommand[currentCommandLen] = key;
     currentCommandLen++;
 
-    if (FinishIfMatch('q'))
+    if (FinishIfMatch("q"))
       Quit(window);
 
     HandleMotions(key, buffer, mode, window);
