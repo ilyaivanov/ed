@@ -385,7 +385,8 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
   case WM_KEYDOWN:
   case WM_SYSKEYDOWN:
     // assume this won't generate WM_CHAR nor WM_SYSCHAR events by OS
-    if (wParam == VK_ESCAPE || (IsKeyPressed(VK_CONTROL) && IsPrintable(wParam)))
+    // hardcoded VK_F11 and other stuff is ugly, I need to fugure out a way
+    if (wParam == VK_ESCAPE ||  wParam == VK_F11 || (IsKeyPressed(VK_CONTROL) && IsPrintable(wParam)))
       OnKeyPressed(wParam);
     // if (wParam == VK_F11) {
     //   window.isFullscreen = !window.isFullscreen;

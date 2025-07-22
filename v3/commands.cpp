@@ -46,6 +46,14 @@ bool FinishIfMatch(const char* ch) {
   return res;
 }
 
+bool FinishIfLastKey(u64 key) {
+  if (currentCommandLen > 0 && currentCommand[currentCommandLen - 1].ch == key) {
+    isFinished = true;
+    return true;
+  }
+  return false;
+}
+
 bool FinishIfSearchMatch(char searchCommand) {
   bool res = currentCommandLen == 2 && currentCommand[0].ch == searchCommand;
   if (res)
@@ -74,15 +82,15 @@ void HandleMotions(Key key, Buffer* buffer, Mode* mode, Window* window) {
     nextCursor = ApplyDesiredOffset(buffer, FindLineStart(buffer, buffer->size - 1));
     doNotUpdateDesiredOffset = true;
   }
-  if(FinishIfMatch("0"))
-      nextCursor = FindLineStart(buffer, buffer->cursorPos);
-  
-  if(FinishIfMatch("$"))
+  if (FinishIfMatch("0"))
+    nextCursor = FindLineStart(buffer, buffer->cursorPos);
+
+  if (FinishIfMatch("$"))
     nextCursor = FindLineEnd(buffer, buffer->cursorPos);
-  
-  if(FinishIfMatch("^"))
+
+  if (FinishIfMatch("^"))
     nextCursor = SkipWhitespace(buffer, FindLineStart(buffer, buffer->cursorPos));
-  
+
   if (FinishIfSearchMatch('f'))
     nextCursor = FindIndexOfCharForward(buffer, buffer->cursorPos + 1, currentCommand[1].ch);
 
@@ -142,6 +150,10 @@ void AppendKey(Key key, Buffer* buffer, Mode* mode, Window* window) {
 
     if (FinishIfMatch("q"))
       Quit(window);
+    if (FinishIfLastKey(VK_F11)) {
+      window->isFullscreen = !window->isFullscreen;
+      SetFullscreen(window->windowHandle, window->isFullscreen);
+    }
 
     HandleMotions(key, buffer, mode, window);
   }

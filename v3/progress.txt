@@ -34,12 +34,12 @@ Motion + Operation = Command
  - Repeat last command
 
 Plan for Motions implementation
- - hjkl
- - wWeEbBb (postpone ge gE)
- - fx Fx tX Tx  
+ y hjkl
+ y wWeEbBb (postpone ge gE)
+ y fx Fx tX Tx  
    - add ability to change if ft motions are multiline (hardcode config in the code). This will also affect h l x
    x repeat last search ; in same direction and , in opposite direction (postpone)
- - G gg 0 $ % ^ 
+ y G gg 0 $ ^ (% postponed) 
  - Add commands like dw or ct)
  - Add ranges line dib ciB
  - Add numerical ranges like d2w
