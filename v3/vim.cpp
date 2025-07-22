@@ -148,6 +148,24 @@ i32 FindLineEnd(Buffer* buffer, i32 pos) {
   return pos;
 }
 
+i32 FindIndexOfCharForward(Buffer* buffer, i32 from, char ch) {
+  while (from < buffer->size) {
+    if (buffer->file[from] == ch)
+      return from;
+    from++;
+  }
+  return -1;
+}
+
+i32 FindIndexOfCharBackward(Buffer* buffer, i32 from, char ch) {
+  while (from >= 0) {
+    if (buffer->file[from] == ch)
+      return from;
+    from--;
+  }
+  return -1;
+}
+
 i32 FindLineStart(Buffer* buffer, i32 pos) {
   while (pos > 0 && buffer->file[pos - 1] != '\n')
     pos--;
