@@ -1,0 +1,4 @@
+What stuff of helix or VIm I use
+ - pasre text as tree
+ - hjkl r c C R i a I A 
+ - dw miwd mi(c 
