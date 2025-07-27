@@ -4,7 +4,7 @@
 #include <stdio.h>
 
 bool IsPrintable(u64 val) {
-  return val >= ' ' && val <= '~';
+  return val == 13 || (val >= ' ' && val <= '~');
 }
 
 u32 IsWhitespace(char ch) {

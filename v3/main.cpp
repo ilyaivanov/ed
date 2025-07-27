@@ -93,7 +93,7 @@ HFONT CreateFont(i32 fontSize, i32 weight) {
 
 void Init() {
   InitFileBuffer("main.cpp", &leftBuffer);
-  InitFileBuffer("play.txt", &buffer);
+  InitFileBuffer("console.cpp", &buffer);
   InitFileBuffer("progress.txt", &textBuffer);
   selectedBuffer = &buffer;
   output = (char*)VirtualAllocateMemory(MB(1));
@@ -150,13 +150,6 @@ void AddLineInside() {
   UpdateCursor(end + offset + 1);
   mode = Insert;
   ignoreNextCharEvent = 1;
-}
-
-void SaveBuffer(Buffer* buffer) {
-  if (buffer->path) {
-    WriteMyFile((char*)buffer->path, buffer->file, buffer->size);
-    buffer->isSaved = true;
-  }
 }
 
 void Run() {
@@ -335,24 +328,6 @@ bool IsSingleCharAlt(char ch) {
 //   }
 // }
 
-void RepeartLastCommand();
-void AppendKey2(Key key) {
-  if (key.ch == '.' && currentCommandLen == 0) {
-    RepeartLastCommand();
-  } else {
-    currentCommand[currentCommandLen] = key;
-    currentCommandLen++;
-    // TryRunCommand();
-  }
-}
-
-void RepeartLastCommand() {
-  currentCommandLen = 0;
-  for (i32 i = 0; i < lastCommandLen; i++) {
-    AppendKey(lastCommand[i], selectedBuffer, &mode, &window);
-  }
-}
-
 void OnKeyPressed(u64 ch) {
   Key key = {
       .ctrl = IsKeyPressed(VK_CONTROL),
@@ -386,7 +361,8 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
   case WM_SYSKEYDOWN:
     // assume this won't generate WM_CHAR nor WM_SYSCHAR events by OS
     // hardcoded VK_F11 and other stuff is ugly, I need to fugure out a way
-    if (wParam == VK_ESCAPE ||  wParam == VK_F11 || (IsKeyPressed(VK_CONTROL) && IsPrintable(wParam)))
+    if (wParam == VK_ESCAPE || wParam == VK_F11 ||
+        (IsKeyPressed(VK_CONTROL) && IsPrintable(wParam)))
       OnKeyPressed(wParam);
     // if (wParam == VK_F11) {
     //   window.isFullscreen = !window.isFullscreen;
@@ -736,8 +712,11 @@ void PrintTopRight(Rect rect) {
 }
 
 void UpdateAndDraw(f32 deltaSec) {
-  Rect left = {0, 0, i32(window.width / 3.0f), window.height};
-  Rect middle = {left.width, 0, i32(window.width / 3.0f), window.height};
+  i32 leftWidth = i32(window.width / 3.0f);
+  // i32 leftWidth = 0;
+  Rect left = {0, 0, leftWidth, window.height};
+  i32 middleWidth = (window.width - leftWidth) / 2.0f;
+  Rect middle = {left.width, 0, middleWidth, window.height};
   i32 rightWidth = window.width - (middle.x + middle.width);
   Rect right = {middle.x + middle.width, 0, rightWidth, window.height};
   Rect topRight = {right.x, right.y, right.width, right.height / 2};

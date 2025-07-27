@@ -10,7 +10,7 @@ void Quit(Window* window) {
 }
 
 void UpdateCursorWithoutDesiredOffset(Buffer* buffer, i32 pos) {
-  buffer->cursorPos = MaxI32(MinI32(pos, buffer->size - 1), 0);
+  buffer->cursorPos = MaxI32(MinI32(pos, buffer->size), 0);
 }
 
 void UpdateCursor(Buffer* buffer, i32 pos) {
@@ -75,6 +75,7 @@ i32 SkipWhitespace(Buffer* buffer, i32 pos) {
     pos++;
   return pos;
 }
+
 i32 AddLineAbove(Buffer* buffer) {
   i32 offset = GetOffsetForLineAt(buffer, buffer->cursorPos);
   i32 start = FindLineStart(buffer, buffer->cursorPos);
@@ -83,6 +84,25 @@ i32 AddLineAbove(Buffer* buffer) {
   for (i32 i = 0; i < offset; i++)
     InsertCharAt(buffer, ' ', start + i);
   return start + offset;
+}
+
+char ToUppercase(char ch) {
+  if (ch >= 'a' && ch <= 'z')
+    return ch - ('a' - 'A');
+  return ch;
+}
+
+char ToLowercase(char ch) {
+  if (ch >= 'A' && ch <= 'Z')
+    return ch + ('a' - 'A');
+  return ch;
+}
+
+void SaveBuffer(Buffer* buffer) {
+  if (buffer->path) {
+    WriteMyFile((char*)buffer->path, buffer->file, buffer->size);
+    buffer->isSaved = true;
+  }
 }
 
 // void AddLineBelow() {

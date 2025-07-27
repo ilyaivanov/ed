@@ -44,4 +44,6 @@ Plan for Motions implementation
  - Add ranges line dib ciB
  - Add numerical ranges like d2w
  - Add line ranges like dl and d2l (vim equivalent of dd and d2d)
+ - gu and gU operations of examples of two-letter operations
+     - funny thin is that in order to lowercase the line you go gugu, same principle as dd or cc
 
