@@ -2,3 +2,31 @@ What stuff of helix or VIm I use
  - pasre text as tree
  - hjkl r c C R i a I A 
  - dw miwd mi(c 
+
+
+Milestones
+  Replace helix without LSP
+    - Write what I need to replace helix
+    - hjkl oO dD cC iI aA wW bB fF tT 
+    - dw cb diw dib dl das(strings)
+    - search 
+    - undo\redo
+    - cursor history
+  Add syntax highlight
+  Folding
+
+
+Progress
+ 26.07
+   - Create an empty app with /NODEFAULTLIB for clang
+   - Read\show file
+   - hjkl movements
+   - Insert mode
+   - o O
+
+ 27.07
+   - x X C D
+   - I aA <C-o>
+   - dl d5l
+   - dib cab
+

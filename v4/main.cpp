@@ -38,8 +38,11 @@ Mode mode;
 char* content;
 i64 size;
 i64 capacity;
+bool isSaved = true;
+const char* path = "sample.txt";
 
 #define ArrayLength(array) (sizeof(array) / sizeof(array[0]))
+
 inline void* valloc(size_t size) {
   return VirtualAlloc(0, size, MEM_COMMIT, PAGE_READWRITE);
 };
@@ -57,6 +60,24 @@ void* memset(void* dest, int c, size_t count) {
     *bytes++ = (char)c;
   }
   return dest;
+}
+
+#pragma function(strlen)
+size_t strlen(const char* str) {
+  i32 res = 0;
+  while (str[res] != '\0')
+    res++;
+  return res;
+}
+
+bool strequal(const char* a, const char* b) {
+  while (*a && *b) {
+    if (*a != *b)
+      return false;
+    a++;
+    b++;
+  }
+  return *a == *b;
 }
 
 // TODO: no need to allocate memory each call, pre-allocate memory and check it's capacity
@@ -157,7 +178,7 @@ void ReadFileInto(const char* path, u32 fileSize, char* buffer) {
   CloseHandle(file);
 }
 
-void WriteMyFile(char* path, char* content, int size) {
+void WriteMyFile(const char* path, char* content, int size) {
   HANDLE file = CreateFileA(path, GENERIC_WRITE, FILE_SHARE_READ, 0, CREATE_ALWAYS, 0, 0);
 
   DWORD bytesWritten;
@@ -249,6 +270,7 @@ void BufferRemoveChars(int from, int to) {
   myMemMove(content + from, content + to + 1, num_to_shift);
 
   size -= (to - from + 1);
+  isSaved = false;
 }
 
 void BufferInsertChars(char* chars, i32 len, i32 at) {
@@ -268,6 +290,29 @@ void BufferInsertChars(char* chars, i32 len, i32 at) {
   for (i32 i = at; i < at + len; i++) {
     content[i] = chars[i - at];
   }
+  isSaved = false;
+}
+
+u32 IsWhitespace(char ch) {
+  return ch == ' ' || ch == '\n';
+}
+
+u32 IsAlphaNumeric(char ch) {
+  return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
+}
+
+u32 IsPunctuation(char ch) {
+  // use a lookup table
+  const char* punctuation = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
+
+  const char* p = punctuation;
+  while (*p) {
+    if (ch == *p) {
+      return 1;
+    }
+    p++;
+  }
+  return 0;
 }
 
 i32 FindLineStart(i32 p) {
@@ -282,6 +327,52 @@ i32 FindLineEnd(i32 p) {
     p++;
 
   return p;
+}
+
+i32 JumpWordForward(i32 p) {
+  char* text = content;
+  if (IsWhitespace(text[p])) {
+    while (p < size && IsWhitespace(text[p]))
+      p++;
+  } else {
+    if (IsAlphaNumeric(text[p])) {
+      while (p < size && IsAlphaNumeric(text[p]))
+        p++;
+    } else {
+      while (p < size && IsPunctuation(text[p]))
+        p++;
+    }
+    while (p < size && IsWhitespace(text[p]))
+      p++;
+  }
+
+  return p;
+}
+
+i32 JumpWordBackward(i32 p) {
+  char* text = content;
+  pos = Max(pos - 1, 0);
+  i32 isStartedAtWhitespace = IsWhitespace(text[pos]);
+
+  while (pos > 0 && IsWhitespace(text[pos]))
+    pos--;
+
+  if (IsAlphaNumeric(text[pos])) {
+    while (pos > 0 && IsAlphaNumeric(text[pos]))
+      pos--;
+  } else {
+    while (pos > 0 && IsPunctuation(text[pos]))
+      pos--;
+  }
+  if (pos != 0)
+    pos++;
+
+  if (!isStartedAtWhitespace) {
+    while (pos > 0 && IsWhitespace(text[pos]))
+      pos--;
+  }
+
+  return pos;
 }
 
 i32 GetOffset(i32 p) {
@@ -304,7 +395,7 @@ void UpdateDesiredOffset() {
 }
 
 void UpdateCursorWithoutDesiredOffset(i32 p) {
-  pos = Max(Min(p, size), 0);
+  pos = Max(Min(p, size - 1), 0);
 }
 
 void UpdateCursor(i32 p) {
@@ -314,7 +405,8 @@ void UpdateCursor(i32 p) {
 
 void MoveDown() {
   i32 end = FindLineEnd(pos);
-  UpdateCursorWithoutDesiredOffset(ApplyDesiredOffset(end + 1));
+  if (end != (size - 1))
+    UpdateCursorWithoutDesiredOffset(ApplyDesiredOffset(end + 1));
 }
 
 void MoveUp() {
@@ -340,6 +432,352 @@ inline BOOL IsKeyPressed(u32 code) {
 }
 
 int ignoreNextCharEvent = 0;
+void EnterInsert() {
+  mode = Insert;
+  ignoreNextCharEvent = 1;
+}
+
+void InsertNewLineWithOffset(i32 where, i32 offset) {
+  char toInsert[255] = {'\n'};
+  for (i32 i = 0; i < offset; i++)
+    toInsert[i + 1] = ' ';
+  BufferInsertChars(toInsert, offset + 1, where);
+  if (where == 0)
+    UpdateCursor(where + offset);
+  else
+    UpdateCursor(where + offset + 1);
+}
+
+void AddLineAbove() {
+  i32 offset = GetOffset(pos);
+  i32 where = Max(FindLineStart(pos) - 1, 0);
+
+  InsertNewLineWithOffset(where, offset);
+
+  EnterInsert();
+}
+
+void AddLineBelow() {
+
+  i32 offset = GetOffset(pos);
+  i32 where = FindLineEnd(pos);
+
+  InsertNewLineWithOffset(where, offset);
+
+  EnterInsert();
+}
+
+void AddLineInside() {
+  i32 offset = GetOffset(pos);
+  i32 where = FindLineEnd(pos);
+
+  InsertNewLineWithOffset(where, offset + 2);
+
+  EnterInsert();
+}
+
+struct Key {
+  bool ctrl;
+  bool alt;
+  i64 ch;
+};
+
+Key keys[255];
+i32 keysLen;
+
+bool isMatch;
+bool IsCommand(const char* cmd) {
+  i32 len = strlen(cmd);
+  if (keysLen == len) {
+    for (i32 i = 0; i < keysLen; i++) {
+      if (keys[i].ch != cmd[i])
+        return false;
+    }
+    isMatch = true;
+    return true;
+  }
+  return false;
+}
+
+i32 pow(i32 b, i32 p) {
+  i32 res = 1;
+  for (i32 i = 0; i < p; i++)
+    res *= b;
+  return res;
+}
+
+i32 atoi(Key* buff, i32 len) {
+  i32 res = 0;
+  for (i32 i = 0; i < len; i++) {
+    res += pow(buff[i].ch - '0', len - i);
+  }
+  return res;
+}
+
+bool IsComplexCommand(const char* prefix, const char* postfix, i32* count) {
+  i32 prefixLen = strlen(prefix);
+  i32 postfixLen = strlen(postfix);
+  if (keysLen >= (prefixLen + postfixLen)) {
+    for (i32 i = 0; i < prefixLen; i++) {
+      if (keys[i].ch != prefix[i])
+        return false;
+    }
+    for (i32 i = 0; i < postfixLen; i++) {
+      if (keys[keysLen - postfixLen + i].ch != postfix[i])
+        return false;
+    }
+    i32 c = 1;
+    if (keysLen > (prefixLen + postfixLen)) {
+      c = atoi(keys + prefixLen, keysLen - (prefixLen + postfixLen));
+    }
+
+    isMatch = true;
+    *count = c;
+
+    return true;
+  }
+
+  return false;
+}
+
+bool IsCtrlCommand(char ch) {
+  if (keysLen == 1 && keys[0].ch == ch && keys[0].ctrl) {
+    isMatch = true;
+    return true;
+  }
+  return false;
+}
+
+struct Range {
+  i32 left;
+  i32 right;
+};
+
+Range PerformMotion(const char* motion, i32 count) {
+  Range range = {-1, -1};
+  if (strequal(motion, "l")) {
+    range.left = FindLineStart(pos);
+    i32 right = pos;
+    while (right < size && count > 0) {
+      if (content[right] == '\n')
+        count--;
+
+      right++;
+    }
+    right--;
+    range.right = right;
+    return range;
+  }
+  if (strequal(motion, "w")) {
+    range.left = pos;
+    i32 end = pos;
+
+    while (count > 0) {
+      end = JumpWordForward(end);
+      count--;
+    }
+    range.right = end;
+
+    i32 last = range.right - 1;
+    if (content[last] == '\n')
+      last--;
+    range.right = last;
+    return range;
+  }
+  
+  if (strequal(motion, "ib") || strequal(motion, "ab")) {
+    range.left = pos;
+    range.right = pos;
+    while (content[range.left] != '(' && range.left > 0)
+      range.left--;
+
+    while (content[range.right] != ')' && range.right < (size - 1))
+      range.right++;
+
+    if (content[range.left] != '(' || content[range.right] != ')') {
+      range.left = -1;
+      range.right = -1;
+    } else if (strequal(motion, "ib")) {
+      range.left++;
+      range.right--;
+    }
+    return range;
+  }
+
+  return range;
+}
+
+inline bool IsValid(Range range) {
+  return range.left != -1 && range.right != -1;
+}
+
+void InsertNewLineWithOffset(i32 where, i32 offset);
+void HandleComplexCommands() {
+  i32 count;
+  if (IsComplexCommand("d", "l", &count)) {
+    Range range = PerformMotion("l", count);
+
+    BufferRemoveChars(range.left, range.right);
+    UpdateCursor(ApplyDesiredOffset(range.left));
+  }
+
+  if (IsComplexCommand("d", "w", &count)) {
+    Range range = PerformMotion("w", count);
+    BufferRemoveChars(range.left, range.right);
+  }
+
+  if (IsComplexCommand("c", "w", &count)) {
+    Range range = PerformMotion("w", count);
+    BufferRemoveChars(range.left, range.right);
+    EnterInsert();
+  }
+
+  if (IsComplexCommand("c", "l", &count)) {
+    i32 offset = GetOffset(pos);
+    Range range = PerformMotion("l", count);
+    BufferRemoveChars(range.left, range.right);
+    InsertNewLineWithOffset(range.left - 1, offset);
+    EnterInsert();
+  }
+
+  if (IsComplexCommand("c", "ib", &count)) {
+    Range range = PerformMotion("ib", count);
+    if (IsValid(range)) {
+      BufferRemoveChars(range.left, range.right);
+      UpdateCursor(range.left);
+      EnterInsert();
+    }
+  }
+
+  if (IsComplexCommand("d", "ib", &count)) {
+    Range range = PerformMotion("ib", count);
+    if (IsValid(range)) {
+      BufferRemoveChars(range.left, range.right);
+      UpdateCursor(range.left);
+    }
+  }
+
+  if (IsComplexCommand("c", "ab", &count)) {
+    Range range = PerformMotion("ab", count);
+    if (IsValid(range)) {
+      BufferRemoveChars(range.left, range.right);
+      UpdateCursor(range.left);
+      EnterInsert();
+    }
+  }
+
+  if (IsComplexCommand("d", "ab", &count)) {
+    Range range = PerformMotion("ab", count);
+    if (IsValid(range)) {
+      BufferRemoveChars(range.left, range.right);
+      UpdateCursor(range.left);
+    }
+  }
+}
+
+void HandleKeyPress() {
+  isMatch = false;
+  Key key = keys[keysLen - 1];
+  if (key.ch == VK_ESCAPE) {
+    mode = Normal;
+    keysLen = 0;
+  } else if (mode == Normal) {
+
+    HandleComplexCommands();
+    if (IsCommand("I")) {
+      pos = FindLineStart(pos);
+      EnterInsert();
+    }
+    if (IsCommand("i")) {
+      EnterInsert();
+    }
+    if (IsCommand("A")) {
+      pos = FindLineEnd(pos);
+      EnterInsert();
+    }
+    if (IsCommand("a")) {
+      UpdateCursor(pos + 1);
+      EnterInsert();
+    }
+    if (IsCommand("q")) {
+      PostQuitMessage(0);
+      isRunning = 0;
+    }
+    if (IsCommand("z")) {
+      isF = !isF;
+      SetFullscreen(win, isF);
+    }
+    if (IsCommand("X")) {
+      if (pos > 0) {
+        BufferRemoveChars(pos - 1, pos - 1);
+        UpdateCursor(pos - 1);
+      }
+    }
+    if (IsCommand("x")) {
+      if (pos < (size - 1))
+        BufferRemoveChars(pos, pos);
+    }
+    if (IsCommand("C")) {
+      i32 end = FindLineEnd(pos);
+      BufferRemoveChars(pos, end - 1);
+      EnterInsert();
+    }
+    if (IsCommand("D")) {
+      i32 end = FindLineEnd(pos);
+      BufferRemoveChars(pos, end - 1);
+    }
+
+    if (IsCtrlCommand('o'))
+      AddLineInside();
+    if (IsCtrlCommand('s')) {
+      WriteMyFile(path, content, size);
+      isSaved = true;
+    } else if (IsCommand("O"))
+      AddLineAbove();
+    else if (IsCommand("o"))
+      AddLineBelow();
+
+    if (IsCommand("l"))
+      MoveRight();
+    if (IsCommand("h"))
+      MoveLeft();
+    if (IsCommand("j"))
+      MoveDown();
+    if (IsCommand("k"))
+      MoveUp();
+    if (IsCommand("w"))
+      UpdateCursor(JumpWordForward(pos));
+    if (IsCommand("b"))
+      UpdateCursor(JumpWordBackward(pos));
+  }
+  if (mode == Insert) {
+    if (key.ch == VK_ESCAPE) {
+      isMatch = 1;
+      mode = Normal;
+    }
+    if (key.ch == VK_RETURN) {
+      i32 offset = GetOffset(pos);
+
+      char toInsert[255] = {'\n'};
+      for (i32 i = 0; i < offset; i++)
+        toInsert[i + 1] = ' ';
+      BufferInsertChars(toInsert, offset + 1, pos);
+      UpdateCursor(pos + offset + 1);
+    }
+
+    if (key.ch == VK_BACK) {
+      if (pos > 0) {
+        BufferRemoveChars(pos - 1, pos - 1);
+        UpdateCursor(pos - 1);
+      }
+    }
+  }
+
+  if (isMatch) {
+    keysLen = 0;
+  }
+}
+
 LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
   switch (message) {
   case WM_CHAR:
@@ -354,73 +792,19 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
     }
     break;
   case WM_KEYDOWN:
-  case WM_SYSKEYDOWN:
-    if (mode == Normal) {
-      if (wParam == 'I') {
-        mode = Insert;
-        ignoreNextCharEvent = 1;
-      }
-      if (wParam == 'Q') {
-        PostQuitMessage(0);
-        isRunning = 0;
-      }
-      if (wParam == 'Z') {
-        isF = !isF;
-        SetFullscreen(win, isF);
-      }
-      if (wParam == 'X' && IsKeyPressed(VK_SHIFT)) {
-        if (pos > 0) {
-          BufferRemoveChars(pos - 1, pos - 1);
-          UpdateCursor(pos - 1);
-        }
-      } else if (wParam == 'X') {
-        if (pos < (size - 1))
-          BufferRemoveChars(pos, pos);
-      }
+  case WM_SYSKEYDOWN: {
+    if (wParam == VK_SHIFT || wParam == VK_CONTROL)
+      break;
 
-      if (wParam == 'O') {
-        i32 offset = GetOffset(pos);
-        i32 where = 0;
+    i64 ch = wParam;
+    if (!IsKeyPressed(VK_SHIFT) && ch >= 'A' && ch <= 'Z')
+      ch += 'a' - 'A';
 
-        if (IsKeyPressed(VK_SHIFT))
-          where = Max(FindLineStart(pos) - 1, 0);
-        else
-          where = FindLineEnd(pos);
-
-        char toInsert[255] = {'\n'};
-        for (i32 i = 0; i < offset; i++)
-          toInsert[i + 1] = ' ';
-        BufferInsertChars(toInsert, offset + 1, where);
-        if (where == 0)
-          UpdateCursor(where + offset);
-        else
-          UpdateCursor(where + offset + 1);
-        mode = Insert;
-        ignoreNextCharEvent = 1;
-      }
-      if (wParam == 'L')
-        MoveRight();
-      if (wParam == 'H')
-        MoveLeft();
-      if (wParam == 'J')
-        MoveDown();
-      if (wParam == 'K')
-        MoveUp();
-    }
-    if (mode == Insert) {
-      if (wParam == VK_ESCAPE)
-        mode = Normal;
-      if (wParam == VK_RETURN) {
-        i32 offset = GetOffset(pos);
-
-        char toInsert[255] = {'\n'};
-        for (i32 i = 0; i < offset; i++)
-          toInsert[i + 1] = ' ';
-        BufferInsertChars(toInsert, offset + 1, pos);
-        UpdateCursor(pos + offset + 1);
-      }
-    }
-    break;
+    keys[keysLen].alt = IsKeyPressed(VK_MENU);
+    keys[keysLen].ctrl = IsKeyPressed(VK_CONTROL);
+    keys[keysLen++].ch = ch;
+    HandleKeyPress();
+  } break;
   case WM_DESTROY:
     PostQuitMessage(0);
     isRunning = 0;
@@ -429,8 +813,7 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
     PAINTSTRUCT ps;
     HDC hdc = BeginPaint(handle, &ps);
     EndPaint(handle, &ps);
-    break;
-  }
+  } break;
   case WM_SIZE:
     Size(lParam);
     break;
@@ -462,10 +845,6 @@ void OpenWindow() {
   win = CreateWindowA(windowClass.lpszClassName, title, WS_OVERLAPPEDWINDOW | WS_VISIBLE,
                       screenWidth - width, 0, width, height, 0, 0, instance, 0);
 
-  // if (window->isFullscreen)
-  // SetFullscreen(window->windowHandle, 1);
-
-  // dc = GetDC(win);
   ShowWindow(win, SW_SHOW);
   BOOL USE_DARK_MODE = TRUE;
   SUCCEEDED(DwmSetWindowAttribute(win, DWMWA_USE_IMMERSIVE_DARK_MODE, &USE_DARK_MODE,
@@ -484,16 +863,26 @@ HFONT CreateFont(i32 fontSize, const char* name, i32 weight, i32 quiality) {
                      DEFAULT_PITCH, name);
 }
 
-i32 Append(char* buffer, const char* str) {
+// TODO: there is definitelly a better way, currently just trying to make calling part easy without
+// variable arguments
+char* strBuffer;
+i32 strBufferCurrentPos;
+void Append(const char* str) {
+  char* buffer = strBuffer + strBufferCurrentPos;
   i32 l = 0;
   while (str[l] != '\0') {
     buffer[l] = str[l];
     l++;
   }
-  return l;
+  strBufferCurrentPos += l;
 }
 
-i32 Append(char* buffer, int v) {
+void Append(char ch) {
+  strBuffer[strBufferCurrentPos++] = ch;
+}
+
+void Append(int v) {
+  char* buffer = strBuffer + strBufferCurrentPos;
   char temp[20] = {0};
   i32 l = 0;
 
@@ -509,7 +898,42 @@ i32 Append(char* buffer, int v) {
   for (i32 i = l - 1; i >= 0; i--)
     buffer[l - i - 1] = temp[i];
 
-  return l;
+  strBufferCurrentPos += l;
+}
+
+void PrintFooter(f32 deltaMs) {
+
+  // Todo: this can be moved outside of function block, I can manipulate just lenth
+  char buff[1024];
+  strBuffer = buff;
+  strBufferCurrentPos = 0;
+  Append("Command: ");
+  for (i32 i = 0; i < keysLen; i++) {
+    if (keys[i].ch == VK_ESCAPE)
+      Append("<ESC>");
+    else if (keys[i].ch == VK_RETURN)
+      Append("<ENTER>");
+    else if (keys[i].ch == VK_BACK)
+      Append("<BACK>");
+    else
+      Append((char)keys[i].ch);
+  }
+
+  Append(" ");
+
+  if (isSaved)
+    Append("Saved");
+  else
+    Append("Modified");
+
+  Append(" ");
+
+  Append("Frame: ");
+  Append(i32(deltaMs));
+  Append("ms ");
+
+  TextColors(0x888888, 0x000000);
+  TextOutA(dc, 20, canvas.height - 30, buff, strBufferCurrentPos);
 }
 
 extern "C" void WinMainCRTStartup() {
@@ -529,8 +953,6 @@ extern "C" void WinMainCRTStartup() {
 
   HDC windowDC = GetDC(win);
 
-  const char* path = "progress.txt";
-  // const char* path = "m.cpp";
   i64 fileSize = GetMyFileSize(path);
   char* temp = (char*)valloc(fileSize);
   ReadFileInto(path, fileSize, temp);
@@ -556,7 +978,6 @@ extern "C" void WinMainCRTStartup() {
 
     TextColors(0xd0d0d0, 0x000000);
 
-    i32 i = 0;
     i32 x = 20;
     f32 y = 20;
 
@@ -564,14 +985,15 @@ extern "C" void WinMainCRTStartup() {
     const char* ch = "w";
     GetTextExtentPoint32A(dc, ch, 1, &s);
 
-    while (content[i] != '\0') {
+    i32 i = 0;
+    while (i < size) {
       i32 lineStart = i;
-      while (content[i] != '\n' && content[i] != '\0')
+      while (content[i] != '\n' && i < size)
         i++;
 
       TextOutA(dc, x, (i32)y, content + lineStart, i - lineStart);
 
-      if (content[i] == '\0')
+      if (i >= size)
         break;
       i++;
       y += (f32)m.tmHeight * 1.1f;
@@ -602,16 +1024,7 @@ extern "C" void WinMainCRTStartup() {
     }
     i64 frameEnd = GetPerfCounter();
 
-    char buff[255];
-    i32 len = 0;
-    len += Append(buff + len, "Frame: ");
-    len += Append(buff + len, (frameEnd - frameStart) * 1000.0f / freq);
-    len += Append(buff + len, "ms");
-    // len += Append(buff + len, " ") + 1;
-    // len += Append(buff + len, 142) + 1;
-
-    TextColors(0x888888, 0x000000);
-    TextOutA(dc, 20, canvas.height - 30, buff, len);
+    PrintFooter(((frameEnd - frameStart) * 1000.0f / freq));
 
     StretchDIBits(windowDC, 0, 0, width, height, 0, 0, canvas.width, canvas.height, canvas.pixels,
                   &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
