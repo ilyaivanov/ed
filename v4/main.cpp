@@ -584,17 +584,19 @@ Range PerformMotion(const char* motion, i32 count) {
     range.right = last;
     return range;
   }
-  
+
   if (strequal(motion, "ib") || strequal(motion, "ab")) {
     range.left = pos;
     range.right = pos;
-    while (content[range.left] != '(' && range.left > 0)
+    char left = '(';
+    char right = ')';
+    while (content[range.left] != left && range.left > 0)
       range.left--;
 
-    while (content[range.right] != ')' && range.right < (size - 1))
+    while (content[range.right] != right && range.right < (size - 1))
       range.right++;
 
-    if (content[range.left] != '(' || content[range.right] != ')') {
+    if (content[range.left] != left || content[range.right] != right) {
       range.left = -1;
       range.right = -1;
     } else if (strequal(motion, "ib")) {
@@ -603,7 +605,6 @@ Range PerformMotion(const char* motion, i32 count) {
     }
     return range;
   }
-
   return range;
 }
 
@@ -613,6 +614,11 @@ inline bool IsValid(Range range) {
 
 void InsertNewLineWithOffset(i32 where, i32 offset);
 void HandleComplexCommands() {
+  //
+  // operations c d - 2
+  // motions w l (b)*2 - 4
+  // ifs - 2 * 5 = 8
+  //
   i32 count;
   if (IsComplexCommand("d", "l", &count)) {
     Range range = PerformMotion("l", count);
