@@ -72,7 +72,7 @@ i64 capacity;
 Spring offset;
 bool isSaved = true;
 TEXTMETRICA m;
-const char* path = "main.cpp";
+const char* path = "progress.txt";
 
 #define ArrayLength(array) (sizeof(array) / sizeof(array[0]))
 
@@ -453,34 +453,33 @@ i32 JumpWordForward(i32 p) {
     while (p < size && IsWhitespace(text[p]))
       p++;
   }
-
   return p;
 }
 
 i32 JumpWordBackward(i32 p) {
   char* text = content;
-  pos = Max(pos - 1, 0);
-  i32 isStartedAtWhitespace = IsWhitespace(text[pos]);
+  p = Max(p - 1, 0);
+  i32 isStartedAtWhitespace = IsWhitespace(text[p]);
 
-  while (pos > 0 && IsWhitespace(text[pos]))
-    pos--;
+  while (p > 0 && IsWhitespace(text[p]))
+    p--;
 
-  if (IsAlphaNumeric(text[pos])) {
-    while (pos > 0 && IsAlphaNumeric(text[pos]))
-      pos--;
+  if (IsAlphaNumeric(text[p])) {
+    while (p > 0 && IsAlphaNumeric(text[p]))
+      p--;
   } else {
-    while (pos > 0 && IsPunctuation(text[pos]))
-      pos--;
+    while (p > 0 && IsPunctuation(text[p]))
+      p--;
   }
-  if (pos != 0)
-    pos++;
+  if (p != 0)
+    p++;
 
   if (!isStartedAtWhitespace) {
-    while (pos > 0 && IsWhitespace(text[pos]))
-      pos--;
+    while (p > 0 && IsWhitespace(text[p]))
+      p--;
   }
 
-  return pos;
+  return p;
 }
 
 i32 GetOffset(i32 p) {
@@ -704,9 +703,16 @@ Range PerformMotion(const char* motion, i32 count) {
     range.right = end;
 
     i32 last = range.right - 1;
-    if (content[last] == '\n')
-      last--;
-    range.right = last;
+    i32 pot = last;
+
+    while (content[pot] == ' ')
+      pot--;
+
+    if (content[pot] == '\n') {
+      range.right = pot - 1;
+    } else
+      range.right = last;
+
     return range;
   }
 
@@ -956,7 +962,11 @@ void HandleKeyPress() {
         UpdateCursor(pos - 1);
       }
     }
-    if (key.ch >= ' ' && key.ch <= '}') {
+    if (key.ch == 'w' && key.ctrl) {
+      i32 to = JumpWordBackward(pos);
+      BufferRemoveChars(to, pos - 1);
+      UpdateCursor(to);
+    } else if (key.ch >= ' ' && key.ch <= '}') {
       char chars[1] = {(char)key.ch};
       BufferInsertChars(chars, 1, pos);
       UpdateCursor(pos + 1);
@@ -970,7 +980,10 @@ void HandleKeyPress() {
     if (key.ch == VK_RETURN) {
       mode = Normal;
     }
-    if (IsPrintable(key.ch)) {
+
+    if (key.ch == 'w' && key.ctrl) {
+      searchTermLen = 0;
+    } else if (IsPrintable(key.ch)) {
       searchTerm[searchTermLen++] = (char)key.ch;
       SearchNext(pos);
     }
@@ -1007,10 +1020,14 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
       break;
 
     i64 ch = wParam;
-    if (!IsKeyPressed(VK_SHIFT) && ch >= 'A' && ch <= 'Z')
+    if (!IsKeyPressed(VK_SHIFT))
       ch = ToLower(ch);
 
-    if ((mode == Normal && IsAlphaNumeric((char)ch))) {
+    // todo: ugly want to detect shortcuts, because <C-w> is not char WM_CHAR
+    if ((mode == Normal && IsAlphaNumeric((char)ch)) ||
+        (mode == SearchInput && ch == 'w' && IsKeyPressed(VK_CONTROL)) ||
+        (mode == Insert && ch == 'w' && IsKeyPressed(VK_CONTROL))
+   ) {
       AddKey(ch);
       ignoreNextCharEvent = true;
     }
