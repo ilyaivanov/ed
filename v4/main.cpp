@@ -72,7 +72,7 @@ i64 capacity;
 Spring offset;
 bool isSaved = true;
 TEXTMETRICA m;
-const char* path = "progress.txt";
+const char* path = "main.cpp";
 
 #define ArrayLength(array) (sizeof(array) / sizeof(array[0]))
 
@@ -391,6 +391,10 @@ u32 IsNumeric(char ch) {
 
 u32 IsAlphaNumeric(char ch) {
   return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
+}
+
+bool IsPrintable(char ch) {
+  return ch >= ' ' && ch <= '}';
 }
 
 u32 ToLower(char ch) {
@@ -931,8 +935,7 @@ void HandleKeyPress() {
       UpdateCursor(JumpWordForward(pos));
     if (IsCommand("b"))
       UpdateCursor(JumpWordBackward(pos));
-  }
-  if (mode == Insert) {
+  } else if (mode == Insert) {
     if (key.ch == VK_ESCAPE) {
       isMatch = 1;
       mode = Normal;
@@ -953,9 +956,24 @@ void HandleKeyPress() {
         UpdateCursor(pos - 1);
       }
     }
-  }
-  if (mode == SearchInput) {
-
+    if (key.ch >= ' ' && key.ch <= '}') {
+      char chars[1] = {(char)key.ch};
+      BufferInsertChars(chars, 1, pos);
+      UpdateCursor(pos + 1);
+    }
+  } else if (mode == SearchInput) {
+    if (key.ch == VK_BACK) {
+      searchTermLen = Max(searchTermLen - 1, 0);
+      if (searchTermLen > 0)
+        SearchNext(pos);
+    }
+    if (key.ch == VK_RETURN) {
+      mode = Normal;
+    }
+    if (IsPrintable(key.ch)) {
+      searchTerm[searchTermLen++] = (char)key.ch;
+      SearchNext(pos);
+    }
     isMatch = 1;
   }
 
@@ -977,30 +995,11 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
     offset.target -= GET_WHEEL_DELTA_WPARAM(wParam);
     break;
   case WM_CHAR:
-    if (ignoreNextCharEvent) {
+    if (ignoreNextCharEvent)
       ignoreNextCharEvent = 0;
-    } else if (mode == Insert) {
-      if (wParam >= ' ' && wParam <= '}') {
-        char chars[1] = {(char)wParam};
-        BufferInsertChars(chars, 1, pos);
-        UpdateCursor(pos + 1);
-      }
-    } else if (mode == SearchInput) {
-      if (wParam == VK_RETURN) {
-        mode = Normal;
-      }
-      if (wParam >= ' ' && wParam <= '}') {
-        searchTerm[searchTermLen++] = (char)wParam;
-        SearchNext(pos);
-      }
-      if (wParam == VK_BACK) {
-        searchTermLen = Max(searchTermLen - 1, 0);
-        if (searchTermLen > 0)
-          SearchNext(pos);
-      }
-    } else if (mode == Normal) {
+    else
       AddKey(wParam);
-    }
+
     break;
   case WM_KEYDOWN:
   case WM_SYSKEYDOWN: {
@@ -1009,9 +1008,9 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
 
     i64 ch = wParam;
     if (!IsKeyPressed(VK_SHIFT) && ch >= 'A' && ch <= 'Z')
-      ch += 'a' - 'A';
+      ch = ToLower(ch);
 
-    if ((mode == Normal && IsAlphaNumeric((char)ch)) || wParam == VK_ESCAPE) {
+    if ((mode == Normal && IsAlphaNumeric((char)ch))) {
       AddKey(ch);
       ignoreNextCharEvent = true;
     }
