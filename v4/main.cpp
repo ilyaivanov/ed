@@ -3,6 +3,10 @@
 #include <stdint.h>
 #include <windows.h>
 
+// config
+bool isCaseSensitiveSearch = false;
+//
+
 typedef struct Spring {
   float target;
   float velocity;
@@ -38,7 +42,11 @@ typedef int32_t i32;
 typedef float f32;
 typedef wchar_t wc;
 
-enum Mode { Normal, Insert };
+enum Mode { Normal, Insert, SearchInput };
+enum SearchDirection { down, up };
+char searchTerm[255];
+i32 searchTermLen;
+SearchDirection searchDirection;
 
 typedef struct MyBitmap {
   i32 width;
@@ -57,14 +65,14 @@ i32 pos = 0;
 i32 desiredOffset = 0;
 HDC dc;
 HWND win;
-Mode mode;
+Mode mode = Normal;
 char* content;
 i64 size;
 i64 capacity;
 Spring offset;
 bool isSaved = true;
 TEXTMETRICA m;
-const char* path = "play.txt";
+const char* path = "progress.txt";
 
 #define ArrayLength(array) (sizeof(array) / sizeof(array[0]))
 
@@ -273,6 +281,8 @@ void ScrollIntoCursor() {
     if ((cursorY - spaceToLookAhead) < offset.target) {
       offset.target = Max((cursorY - (canvas.height / 2.0f)), 0);
     }
+  } else {
+    offset.target = 0;
   }
 }
 
@@ -375,6 +385,18 @@ u32 IsNumeric(char ch) {
 
 u32 IsAlphaNumeric(char ch) {
   return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
+}
+
+u32 ToLower(char ch) {
+  if (ch >= 'A' && ch <= 'Z')
+    return ch + ('a' - 'A');
+  return ch;
+}
+
+u32 ToUpper(char ch) {
+  if (ch >= 'a' && ch <= 'a')
+    return ch - ('a' - 'A');
+  return ch;
 }
 
 u32 IsPunctuation(char ch) {
@@ -736,7 +758,7 @@ void PerformOperatorOnRange(const char* op, Range range) {
 
     if (strequal(range.motion, "l"))
       UpdateCursor(ApplyDesiredOffset(range.left));
-    else if(range.left < pos)
+    else if (range.left < pos)
       UpdateCursor(range.left);
   }
 
@@ -746,7 +768,7 @@ void PerformOperatorOnRange(const char* op, Range range) {
 
     if (!strequal(range.motion, "w"))
       InsertNewLineWithOffset(range.left - 1, offset);
-    else 
+    else
       UpdateCursor(range.left);
 
     EnterInsert();
@@ -778,6 +800,43 @@ void HandleComplexCommands() {
   }
 }
 
+bool CompareChar(char ch1, char ch2) {
+  if (isCaseSensitiveSearch)
+    return ch1 == ch2;
+  else
+    return ToLower(ch1) == ToLower(ch2);
+}
+
+void SearchNext(i32 from) {
+  i32 termIndex = 0;
+  for (i32 i = from; i < size - 1; i++) {
+    if (CompareChar(content[i], searchTerm[termIndex])) {
+      termIndex++;
+    } else {
+      termIndex = 0;
+    }
+
+    if (termIndex >= searchTermLen) {
+      UpdateCursor(i - termIndex + 1);
+      return;
+    }
+  }
+
+  // stupid second search to find occurenced from start is non found from current
+  for (i32 i = 0; i < size - 1; i++) {
+    if (CompareChar(content[i], searchTerm[termIndex])) {
+      termIndex++;
+    } else {
+      termIndex = 0;
+    }
+
+    if (termIndex >= searchTermLen) {
+      UpdateCursor(i - termIndex + 1);
+      return;
+    }
+  }
+}
+
 void HandleKeyPress() {
   isMatch = false;
   Key key = keys[keysLen - 1];
@@ -793,6 +852,13 @@ void HandleKeyPress() {
     if (IsCommand("i")) {
       EnterInsert();
     }
+    if (IsCommand("n")) {
+      SearchNext(pos + 1);
+    }
+    if (IsCommand("/")) {
+      mode = SearchInput;
+    }
+
     if (IsCommand("A")) {
       pos = FindLineEnd(pos);
       EnterInsert();
@@ -880,10 +946,21 @@ void HandleKeyPress() {
       }
     }
   }
+  if (mode == SearchInput) {
+
+    isMatch = 1;
+  }
 
   if (isMatch) {
     keysLen = 0;
   }
+}
+
+void AddKey(i64 ch) {
+  keys[keysLen].alt = IsKeyPressed(VK_MENU);
+  keys[keysLen].ctrl = IsKeyPressed(VK_CONTROL);
+  keys[keysLen++].ch = ch;
+  HandleKeyPress();
 }
 
 LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
@@ -900,6 +977,21 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
         BufferInsertChars(chars, 1, pos);
         UpdateCursor(pos + 1);
       }
+    } else if (mode == SearchInput) {
+      if (wParam == VK_RETURN) {
+        mode = Normal;
+      }
+      if (wParam >= ' ' && wParam <= '}') {
+        searchTerm[searchTermLen++] = (char)wParam;
+        SearchNext(pos);
+      }
+      if (wParam == VK_BACK) {
+        searchTermLen = Max(searchTermLen - 1, 0);
+        if (searchTermLen > 0)
+          SearchNext(pos);
+      }
+    } else if (mode == Normal) {
+      AddKey(wParam);
     }
     break;
   case WM_KEYDOWN:
@@ -911,10 +1003,10 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
     if (!IsKeyPressed(VK_SHIFT) && ch >= 'A' && ch <= 'Z')
       ch += 'a' - 'A';
 
-    keys[keysLen].alt = IsKeyPressed(VK_MENU);
-    keys[keysLen].ctrl = IsKeyPressed(VK_CONTROL);
-    keys[keysLen++].ch = ch;
-    HandleKeyPress();
+    if ((mode == Normal && IsAlphaNumeric((char)ch)) || wParam == VK_ESCAPE) {
+      AddKey(ch);
+      ignoreNextCharEvent = true;
+    }
   } break;
   case WM_DESTROY:
     PostQuitMessage(0);
@@ -1014,6 +1106,16 @@ void Append(int v) {
 
 void PrintFooter(f32 deltaMs) {
 
+  if (mode == SearchInput)
+    TextColors(0x00ffff, 0x000000);
+  else
+    TextColors(0x888888, 0x000000);
+
+  if (searchTermLen > 0) {
+    TextOut(dc, 20, canvas.height - 30, searchTerm, searchTermLen);
+  }else if (mode == SearchInput)
+    TextOut(dc, 20, canvas.height - 30, "SEARCH", strlen("SEARCH"));
+
   // Todo: this can be moved outside of function block, I can manipulate just lenth
   char buff[1024];
   strBuffer = buff;
@@ -1097,14 +1199,16 @@ extern "C" void WinMainCRTStartup() {
     memset(canvas.pixels, 0x00, canvas.width * canvas.height * 4);
 
     f32 pageHeight = GetLinesCount() * m.tmHeight * lineHeight + padding * 2;
-    i32 scrollHeight = f32(canvas.height * canvas.height) / f32(pageHeight);
+    if (pageHeight > canvas.height) {
+      i32 scrollHeight = f32(canvas.height * canvas.height) / f32(pageHeight);
 
-    f32 maxOffset = pageHeight - canvas.height;
-    f32 maxScrollY = canvas.height - scrollHeight;
-    f32 scrollY = lerp(0, maxScrollY, offset.current / maxOffset);
+      f32 maxOffset = pageHeight - canvas.height;
+      f32 maxScrollY = canvas.height - scrollHeight;
+      f32 scrollY = lerp(0, maxScrollY, offset.current / maxOffset);
 
-    i32 scrollWidth = 10;
-    PaintRect(canvas.width - scrollWidth, scrollY, scrollWidth, scrollHeight, 0x555555);
+      i32 scrollWidth = 10;
+      PaintRect(canvas.width - scrollWidth, scrollY, scrollWidth, scrollHeight, 0x555555);
+    }
 
     TextColors(0xd0d0d0, 0x000000);
 
