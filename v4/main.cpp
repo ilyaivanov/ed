@@ -263,6 +263,12 @@ i32 GetLinesCount() {
   return res;
 }
 
+void OffsetCenteredOnCursor() {
+  f32 lineHeightPx = m.tmHeight * lineHeight;
+  CursorPos p = GetCursorPos();
+  f32 cursorY = p.row * lineHeightPx + padding;
+  offset.target = Max(cursorY - (canvas.height / 2.0f), 0);
+}
 void ScrollIntoCursor() {
   i32 itemsToLookAhead = 5;
   f32 lineHeightPx = m.tmHeight * lineHeight;
@@ -276,10 +282,10 @@ void ScrollIntoCursor() {
   f32 pageHeight = GetLinesCount() * lineHeightPx + padding * 2;
   if (pageHeight > canvas.height) {
     if ((cursorY + spaceToLookAhead) > (offset.target + canvas.height)) {
-      offset.target = Max((cursorY - (canvas.height / 2.0f)), 0);
+      OffsetCenteredOnCursor();
     }
     if ((cursorY - spaceToLookAhead) < offset.target) {
-      offset.target = Max((cursorY - (canvas.height / 2.0f)), 0);
+      OffsetCenteredOnCursor();
     }
   } else {
     offset.target = 0;
@@ -858,7 +864,6 @@ void HandleKeyPress() {
     if (IsCommand("/")) {
       mode = SearchInput;
     }
-
     if (IsCommand("A")) {
       pos = FindLineEnd(pos);
       EnterInsert();
@@ -877,7 +882,10 @@ void HandleKeyPress() {
       PostQuitMessage(0);
       isRunning = 0;
     }
-    if (IsCommand("z")) {
+    if (IsCommand("zz")) {
+      OffsetCenteredOnCursor();
+    }
+    if (IsCommand("zf")) {
       isF = !isF;
       SetFullscreen(win, isF);
     }
@@ -1113,7 +1121,7 @@ void PrintFooter(f32 deltaMs) {
 
   if (searchTermLen > 0) {
     TextOut(dc, 20, canvas.height - 30, searchTerm, searchTermLen);
-  }else if (mode == SearchInput)
+  } else if (mode == SearchInput)
     TextOut(dc, 20, canvas.height - 30, "SEARCH", strlen("SEARCH"));
 
   // Todo: this can be moved outside of function block, I can manipulate just lenth
