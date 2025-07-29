@@ -3,6 +3,29 @@
 #include <stdint.h>
 #include <windows.h>
 
+typedef struct Spring {
+  float target;
+  float velocity;
+  float current;
+} Spring;
+
+float stiffness;
+float damping;
+
+void InitAnimations() {
+  stiffness = 600;
+  damping = 1.7 * 25.0f;
+}
+
+void UpdateSpring(Spring* spring, float deltaSec) {
+  float displacement = spring->target - spring->current;
+  float springForce = displacement * stiffness;
+  float dampingForce = spring->velocity * damping;
+
+  spring->velocity += (springForce - dampingForce) * deltaSec;
+  spring->current += spring->velocity * deltaSec;
+}
+
 extern "C" int _fltused = 0x9875;
 
 int isRunning = 1;
@@ -27,9 +50,9 @@ typedef struct MyBitmap {
 BITMAPINFO bitmapInfo;
 MyBitmap canvas;
 HBITMAP canvasBitmap;
-i32 width;
-i32 height;
 
+f32 padding = 20.0f;
+f32 lineHeight = 1.1f;
 i32 pos = 0;
 i32 desiredOffset = 0;
 HDC dc;
@@ -38,8 +61,10 @@ Mode mode;
 char* content;
 i64 size;
 i64 capacity;
+Spring offset;
 bool isSaved = true;
-const char* path = "sample.txt";
+TEXTMETRICA m;
+const char* path = "play.txt";
 
 #define ArrayLength(array) (sizeof(array) / sizeof(array[0]))
 
@@ -186,6 +211,71 @@ void WriteMyFile(const char* path, char* content, int size) {
   CloseHandle(file);
 }
 
+i32 round(f32 v) {
+  return (i32)(v + 0.5f);
+}
+
+i32 Max(i32 a, i32 b) {
+  if (a > b)
+    return a;
+  return b;
+}
+
+i32 Min(i32 a, i32 b) {
+  if (a < b)
+    return a;
+  return b;
+}
+
+struct CursorPos {
+  i32 row;
+  i32 col;
+};
+
+CursorPos GetCursorPos() {
+  CursorPos res = {0};
+  i32 rowStartAt = 0;
+  for (i32 i = 0; i < pos; i++) {
+    if (content[i] == '\n') {
+      res.row++;
+      rowStartAt = i + 1;
+    }
+  }
+  res.col = pos - rowStartAt;
+  return res;
+}
+
+i32 GetLinesCount() {
+  i32 res = 1;
+  for (i32 i = 0; i < size; i++) {
+    if (content[i] == '\n') {
+      res++;
+    }
+  }
+  return res;
+}
+
+void ScrollIntoCursor() {
+  i32 itemsToLookAhead = 5;
+  f32 lineHeightPx = m.tmHeight * lineHeight;
+
+  CursorPos p = GetCursorPos();
+
+  f32 cursorY = p.row * lineHeightPx + padding;
+
+  f32 spaceToLookAhead = lineHeightPx * itemsToLookAhead;
+
+  f32 pageHeight = GetLinesCount() * lineHeightPx + padding * 2;
+  if (pageHeight > canvas.height) {
+    if ((cursorY + spaceToLookAhead) > (offset.target + canvas.height)) {
+      offset.target = Max((cursorY - (canvas.height / 2.0f)), 0);
+    }
+    if ((cursorY - spaceToLookAhead) < offset.target) {
+      offset.target = Max((cursorY - (canvas.height / 2.0f)), 0);
+    }
+  }
+}
+
 u32 ToWinColor(u32 color) {
   return ((color & 0xff0000) >> 16) | (color & 0x00ff00) | ((color & 0x0000ff) << 16);
 }
@@ -202,22 +292,6 @@ void InitBitmapInfo(BITMAPINFO* bitmapInfo, i32 width, i32 height) {
   bitmapInfo->bmiHeader.biHeight = -height; // makes rows go up, instead of going down by default
   bitmapInfo->bmiHeader.biPlanes = 1;
   bitmapInfo->bmiHeader.biCompression = BI_RGB;
-}
-
-i32 round(f32 v) {
-  return (i32)(v + 0.5f);
-}
-
-i32 Max(i32 a, i32 b) {
-  if (a > b)
-    return a;
-  return b;
-}
-
-i32 Min(i32 a, i32 b) {
-  if (a < b)
-    return a;
-  return b;
 }
 
 void PaintRect(f32 x, f32 y, f32 width, f32 height, u32 color) {
@@ -240,15 +314,13 @@ void PaintRect(f32 x, f32 y, f32 width, f32 height, u32 color) {
 }
 
 void Size(LPARAM lParam) {
-  width = LOWORD(lParam);
-  height = HIWORD(lParam);
-  InitBitmapInfo(&bitmapInfo, width, height);
+  canvas.width = LOWORD(lParam);
+  canvas.height = HIWORD(lParam);
+  InitBitmapInfo(&bitmapInfo, canvas.width, canvas.height);
   if (canvasBitmap)
     DeleteObject(canvasBitmap);
 
   canvasBitmap = CreateDIBSection(dc, &bitmapInfo, DIB_RGB_COLORS, (void**)&canvas.pixels, 0, 0);
-  canvas.width = width;
-  canvas.height = height;
   canvas.bytesPerPixel = 4;
 
   SelectObject(dc, canvasBitmap);
@@ -295,6 +367,10 @@ void BufferInsertChars(char* chars, i32 len, i32 at) {
 
 u32 IsWhitespace(char ch) {
   return ch == ' ' || ch == '\n';
+}
+
+u32 IsNumeric(char ch) {
+  return (ch >= '0' && ch <= '9');
 }
 
 u32 IsAlphaNumeric(char ch) {
@@ -396,6 +472,7 @@ void UpdateDesiredOffset() {
 
 void UpdateCursorWithoutDesiredOffset(i32 p) {
   pos = Max(Min(p, size - 1), 0);
+  ScrollIntoCursor();
 }
 
 void UpdateCursor(i32 p) {
@@ -526,6 +603,12 @@ bool IsComplexCommand(const char* prefix, const char* postfix, i32* count) {
       if (keys[keysLen - postfixLen + i].ch != postfix[i])
         return false;
     }
+
+    // check everything inside is just a number
+    for (i32 i = prefixLen; i < (keysLen - postfixLen); i++) {
+      if (!IsNumeric(keys[i].ch))
+        return false;
+    }
     i32 c = 1;
     if (keysLen > (prefixLen + postfixLen)) {
       c = atoi(keys + prefixLen, keysLen - (prefixLen + postfixLen));
@@ -551,10 +634,20 @@ bool IsCtrlCommand(char ch) {
 struct Range {
   i32 left;
   i32 right;
+  const char* motion;
+  bool isSurrounder;
 };
 
 Range PerformMotion(const char* motion, i32 count) {
-  Range range = {-1, -1};
+  Range range = {-1, -1, motion};
+  if (strequal(motion, "gg")) {
+    range.left = 0;
+    range.right = Max(FindLineStart(pos) - 1, 0);
+  }
+  if (strequal(motion, "G")) {
+    range.left = FindLineStart(pos);
+    range.right = size - 1;
+  }
   if (strequal(motion, "l")) {
     range.left = FindLineStart(pos);
     i32 right = pos;
@@ -585,6 +678,10 @@ Range PerformMotion(const char* motion, i32 count) {
     return range;
   }
 
+  return range;
+}
+Range SurroundText(const char* motion, i32 count) {
+  Range range = {-1, -1, motion, true};
   if (strequal(motion, "ib") || strequal(motion, "ab")) {
     range.left = pos;
     range.right = pos;
@@ -605,6 +702,26 @@ Range PerformMotion(const char* motion, i32 count) {
     }
     return range;
   }
+  if (strequal(motion, "iB") || strequal(motion, "aB")) {
+    range.left = pos;
+    range.right = pos;
+    char left = '{';
+    char right = '}';
+    while (content[range.left] != left && range.left > 0)
+      range.left--;
+
+    while (content[range.right] != right && range.right < (size - 1))
+      range.right++;
+
+    if (content[range.left] != left || content[range.right] != right) {
+      range.left = -1;
+      range.right = -1;
+    } else if (strequal(motion, "iB")) {
+      range.left++;
+      range.right--;
+    }
+    return range;
+  }
   return range;
 }
 
@@ -613,70 +730,50 @@ inline bool IsValid(Range range) {
 }
 
 void InsertNewLineWithOffset(i32 where, i32 offset);
-void HandleComplexCommands() {
-  //
-  // operations c d - 2
-  // motions w l (b)*2 - 4
-  // ifs - 2 * 5 = 8
-  //
-  i32 count;
-  if (IsComplexCommand("d", "l", &count)) {
-    Range range = PerformMotion("l", count);
-
+void PerformOperatorOnRange(const char* op, Range range) {
+  if (strequal(op, "d")) {
     BufferRemoveChars(range.left, range.right);
-    UpdateCursor(ApplyDesiredOffset(range.left));
+
+    if (strequal(range.motion, "l"))
+      UpdateCursor(ApplyDesiredOffset(range.left));
+    else if(range.left < pos)
+      UpdateCursor(range.left);
   }
 
-  if (IsComplexCommand("d", "w", &count)) {
-    Range range = PerformMotion("w", count);
-    BufferRemoveChars(range.left, range.right);
-  }
-
-  if (IsComplexCommand("c", "w", &count)) {
-    Range range = PerformMotion("w", count);
-    BufferRemoveChars(range.left, range.right);
-    EnterInsert();
-  }
-
-  if (IsComplexCommand("c", "l", &count)) {
+  if (strequal(op, "c")) {
     i32 offset = GetOffset(pos);
-    Range range = PerformMotion("l", count);
     BufferRemoveChars(range.left, range.right);
-    InsertNewLineWithOffset(range.left - 1, offset);
+
+    if (!strequal(range.motion, "w"))
+      InsertNewLineWithOffset(range.left - 1, offset);
+    else 
+      UpdateCursor(range.left);
+
     EnterInsert();
   }
+}
 
-  if (IsComplexCommand("c", "ib", &count)) {
-    Range range = PerformMotion("ib", count);
-    if (IsValid(range)) {
-      BufferRemoveChars(range.left, range.right);
-      UpdateCursor(range.left);
-      EnterInsert();
+void HandleComplexCommands() {
+  const char* motions[] = {"w", "l", "gg", "G"};
+  const char* operators[] = {"d", "c"};
+  const char* surrounders[] = {"ib", "ab", "iB", "aB"};
+
+  i32 count;
+  for (i32 j = 0; j < ArrayLength(operators); j++) {
+    for (i32 i = 0; i < ArrayLength(motions); i++) {
+      if (IsComplexCommand(operators[j], motions[i], &count)) {
+        Range range = PerformMotion(motions[i], count);
+        if (IsValid(range))
+          PerformOperatorOnRange(operators[j], range);
+      }
     }
-  }
 
-  if (IsComplexCommand("d", "ib", &count)) {
-    Range range = PerformMotion("ib", count);
-    if (IsValid(range)) {
-      BufferRemoveChars(range.left, range.right);
-      UpdateCursor(range.left);
-    }
-  }
-
-  if (IsComplexCommand("c", "ab", &count)) {
-    Range range = PerformMotion("ab", count);
-    if (IsValid(range)) {
-      BufferRemoveChars(range.left, range.right);
-      UpdateCursor(range.left);
-      EnterInsert();
-    }
-  }
-
-  if (IsComplexCommand("d", "ab", &count)) {
-    Range range = PerformMotion("ab", count);
-    if (IsValid(range)) {
-      BufferRemoveChars(range.left, range.right);
-      UpdateCursor(range.left);
+    for (i32 i = 0; i < ArrayLength(surrounders); i++) {
+      if (IsComplexCommand(operators[j], surrounders[i], &count)) {
+        Range range = SurroundText(surrounders[i], count);
+        if (IsValid(range))
+          PerformOperatorOnRange(operators[j], range);
+      }
     }
   }
 }
@@ -688,7 +785,6 @@ void HandleKeyPress() {
     mode = Normal;
     keysLen = 0;
   } else if (mode == Normal) {
-
     HandleComplexCommands();
     if (IsCommand("I")) {
       pos = FindLineStart(pos);
@@ -704,6 +800,12 @@ void HandleKeyPress() {
     if (IsCommand("a")) {
       UpdateCursor(pos + 1);
       EnterInsert();
+    }
+    if (IsCommand("gg")) {
+      UpdateCursorWithoutDesiredOffset(ApplyDesiredOffset(0));
+    }
+    if (IsCommand("G")) {
+      UpdateCursorWithoutDesiredOffset(ApplyDesiredOffset(FindLineStart(size - 1)));
     }
     if (IsCommand("q")) {
       PostQuitMessage(0);
@@ -735,7 +837,7 @@ void HandleKeyPress() {
 
     if (IsCtrlCommand('o'))
       AddLineInside();
-    if (IsCtrlCommand('s')) {
+    else if (IsCtrlCommand('s')) {
       WriteMyFile(path, content, size);
       isSaved = true;
     } else if (IsCommand("O"))
@@ -786,6 +888,9 @@ void HandleKeyPress() {
 
 LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
   switch (message) {
+  case WM_MOUSEWHEEL:
+    offset.target -= GET_WHEEL_DELTA_WPARAM(wParam);
+    break;
   case WM_CHAR:
     if (ignoreNextCharEvent) {
       ignoreNextCharEvent = 0;
@@ -938,24 +1043,33 @@ void PrintFooter(f32 deltaMs) {
   Append(i32(deltaMs));
   Append("ms ");
 
+  SIZE s;
+  const char* ch = "w";
+  GetTextExtentPoint32A(dc, ch, 1, &s);
+
   TextColors(0x888888, 0x000000);
-  TextOutA(dc, 20, canvas.height - 30, buff, strBufferCurrentPos);
+  TextOutA(dc, canvas.width - (strBufferCurrentPos * s.cx) - 20, canvas.height - 30, buff,
+           strBufferCurrentPos);
+}
+
+f32 lerp(f32 from, f32 to, f32 v) {
+  return (1 - v) * from + to * v;
 }
 
 extern "C" void WinMainCRTStartup() {
   PreventWindowsDPIScaling();
   dc = CreateCompatibleDC(0);
   OpenWindow();
+  InitAnimations();
 
   HFONT f = CreateFont(15, "Consolas", FW_REGULAR, CLEARTYPE_NATURAL_QUALITY);
   SelectObject(dc, f);
 
-  TEXTMETRICA m;
   GetTextMetrics(dc, &m);
-  GLYPHSET* set;
-  set = (GLYPHSET*)valloc(GetFontUnicodeRanges(dc, nullptr));
-  GetFontUnicodeRanges(dc, set);
-  i32 r = set->cGlyphsSupported;
+  // GLYPHSET* set;
+  // set = (GLYPHSET*)valloc(GetFontUnicodeRanges(dc, nullptr));
+  // GetFontUnicodeRanges(dc, set);
+  // i32 r = set->cGlyphsSupported;
 
   HDC windowDC = GetDC(win);
 
@@ -982,10 +1096,20 @@ extern "C" void WinMainCRTStartup() {
     }
     memset(canvas.pixels, 0x00, canvas.width * canvas.height * 4);
 
+    f32 pageHeight = GetLinesCount() * m.tmHeight * lineHeight + padding * 2;
+    i32 scrollHeight = f32(canvas.height * canvas.height) / f32(pageHeight);
+
+    f32 maxOffset = pageHeight - canvas.height;
+    f32 maxScrollY = canvas.height - scrollHeight;
+    f32 scrollY = lerp(0, maxScrollY, offset.current / maxOffset);
+
+    i32 scrollWidth = 10;
+    PaintRect(canvas.width - scrollWidth, scrollY, scrollWidth, scrollHeight, 0x555555);
+
     TextColors(0xd0d0d0, 0x000000);
 
-    i32 x = 20;
-    f32 y = 20;
+    i32 x = padding;
+    f32 y = padding - offset.current;
 
     SIZE s;
     const char* ch = "w";
@@ -1002,25 +1126,16 @@ extern "C" void WinMainCRTStartup() {
       if (i >= size)
         break;
       i++;
-      y += (f32)m.tmHeight * 1.1f;
+      y += (f32)m.tmHeight * lineHeight;
     }
 
-    i32 row = 0;
-    i32 rowStartAt = 0;
-    for (i32 i = 0; i < pos; i++) {
-      if (content[i] == '\n') {
-        row++;
-        rowStartAt = i + 1;
-      }
-    }
-    i32 col = pos - rowStartAt;
-
+    CursorPos p = GetCursorPos();
     u32 cursorbg = 0xFFDC32;
     if (mode == Insert)
       cursorbg = 0xFF3269;
     TextColors(0x000000, cursorbg);
-    i32 cursorX = x + col * s.cx;
-    i32 cursorY = 20 + row * m.tmHeight * 1.1f;
+    i32 cursorX = x + p.col * s.cx;
+    i32 cursorY = padding + p.row * m.tmHeight * lineHeight - offset.current;
     if (mode == Insert)
       PaintRect(cursorX - 2, cursorY, 2, m.tmHeight, cursorbg);
     else {
@@ -1030,10 +1145,13 @@ extern "C" void WinMainCRTStartup() {
     }
     i64 frameEnd = GetPerfCounter();
 
-    PrintFooter(((frameEnd - frameStart) * 1000.0f / freq));
+    f32 deltaSec = (frameEnd - frameStart) / freq;
+    PrintFooter(deltaSec * 1000.0f);
 
-    StretchDIBits(windowDC, 0, 0, width, height, 0, 0, canvas.width, canvas.height, canvas.pixels,
-                  &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+    UpdateSpring(&offset, deltaSec);
+
+    StretchDIBits(windowDC, 0, 0, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height,
+                  canvas.pixels, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
     frameStart = frameEnd;
   }
 
