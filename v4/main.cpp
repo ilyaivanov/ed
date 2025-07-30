@@ -72,8 +72,12 @@ i64 capacity;
 Spring offset;
 bool isSaved = true;
 TEXTMETRICA m;
-const char* path1 = "main.cpp";
-const char* path2 = "progress.txt";
+
+const char* files[] = {
+    "main.cpp",
+    "progress.txt",
+    "build.bat",
+};
 const char* currentPath;
 
 #define ArrayLength(array) (sizeof(array) / sizeof(array[0]))
@@ -255,7 +259,6 @@ void ReadFileIntoBuffer(const char* filepath) {
       content[size++] = temp[i];
   }
   vfree(temp);
-
 
   pos = 0;
   offset.current = offset.target = 0;
@@ -890,15 +893,15 @@ void HandleKeyPress() {
     keysLen = 0;
   } else if (mode == Normal) {
     HandleComplexCommands();
-    if (IsAltCommand('1')) {
-      WriteMyFile(currentPath, content, size);
-      ReadFileIntoBuffer(path1);
-      isSaved = true;
-    }
-    if (IsAltCommand('2')) {
-      WriteMyFile(currentPath, content, size);
-      ReadFileIntoBuffer(path2);
-      isSaved = true;
+
+    if (keysLen == 1 && key.alt) {
+      i32 index = key.ch - '1';
+      if (index < ArrayLength(files)) {
+        WriteMyFile(currentPath, content, size);
+        ReadFileIntoBuffer(files[index]);
+        isSaved = true;
+        isMatch = true;
+      }
     }
     if (IsCommand("I")) {
       pos = FindLineStart(pos);
@@ -1071,7 +1074,7 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
     }
   } break;
   case WM_SYSCHAR:
-    //disabled the annoying sound of unhandled alt+key
+    // disabled the annoying sound of unhandled alt+key
     return 0;
     break;
   case WM_DESTROY:
@@ -1200,6 +1203,8 @@ void PrintFooter(f32 deltaMs) {
 
   Append(" ");
 
+  Append(currentPath);
+  Append(" ");
   if (isSaved)
     Append("Saved");
   else
@@ -1241,7 +1246,7 @@ extern "C" void WinMainCRTStartup() {
 
   HDC windowDC = GetDC(win);
 
-  ReadFileIntoBuffer(path1);
+  ReadFileIntoBuffer(files[0]);
 
   i64 frameStart = GetPerfCounter();
   f32 freq = (f32)GetPerfFrequency();
