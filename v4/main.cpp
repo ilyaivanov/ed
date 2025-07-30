@@ -417,6 +417,10 @@ u32 IsAlphaNumeric(char ch) {
   return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
 }
 
+u32 IsAsciiChar(char ch) {
+  return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
+}
+
 bool IsPrintable(char ch) {
   return ch >= ' ' && ch <= '}';
 }
@@ -904,8 +908,17 @@ void HandleKeyPress() {
       }
     }
     if (IsCommand("I")) {
-      pos = FindLineStart(pos);
+      UpdateCursor(FindLineStart(pos));
       EnterInsert();
+    }
+    if (IsCommand("0")) {
+      UpdateCursor(FindLineStart(pos));
+    }
+    if (IsCommand("$")) {
+      UpdateCursor(FindLineEnd(pos));
+    }
+    if (IsCommand("^")) {
+      UpdateCursor(FindLineStart(pos) + GetOffset(pos));
     }
     if (IsCommand("i")) {
       EnterInsert();
@@ -1058,7 +1071,8 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
     break;
   case WM_KEYDOWN:
   case WM_SYSKEYDOWN: {
-    if (wParam == VK_SHIFT || wParam == VK_CONTROL)
+    if (wParam == VK_SHIFT || wParam == VK_CONTROL ||
+        (IsKeyPressed(VK_SHIFT) && !IsAsciiChar(wParam)))
       break;
 
     i64 ch = wParam;
