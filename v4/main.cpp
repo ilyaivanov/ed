@@ -122,11 +122,11 @@ bool strequal(const char* a, const char* b) {
 
 // TODO: no need to allocate memory each call, pre-allocate memory and check it's capacity
 #pragma function(memmove)
-void myMemMove(void* dest, void* src, size_t n) {
+void memmove(void* dest, void* src, size_t n) {
   char* csrc = (char*)src;
   char* cdest = (char*)dest;
 
-  // Create a temporary array to hold data of src
+  // TODO: WTF is valloc doing here? Use a pre-allocated buffer for this
   char* temp = (char*)valloc(n);
 
   // Copy data from csrc[] to temp[]
@@ -224,6 +224,44 @@ void WriteMyFile(const char* path, char* content, int size) {
   DWORD bytesWritten;
   int res = WriteFile(file, content, size, &bytesWritten, 0);
   CloseHandle(file);
+}
+
+char* ReadFromClipboard(HWND window, i32* size) {
+  OpenClipboard(window);
+  HANDLE hClipboardData = GetClipboardData(CF_TEXT);
+  char* pchData = (char*)GlobalLock(hClipboardData);
+  char* res;
+  if (pchData) {
+    i32 len = strlen(pchData);
+    res = (char*)valloc(len);
+    memmove(res, pchData, len);
+    GlobalUnlock(hClipboardData);
+    *size = len;
+  } else {
+    OutputDebugStringA("Failed to capture clipboard\n");
+  }
+  CloseClipboard();
+  return res;
+}
+
+// https://www.codeproject.com/Articles/2242/Using-the-Clipboard-Part-I-Transferring-Simple-Tex
+void WriteToClipboard(HWND window, char* text, i32 len) {
+  if (OpenClipboard(window)) {
+    EmptyClipboard();
+
+    HGLOBAL hClipboardData = GlobalAlloc(GMEM_DDESHARE, len + 1);
+
+    char* pchData = (char*)GlobalLock(hClipboardData);
+
+    memmove(pchData, text, len);
+    pchData[len] = '\0';
+
+    GlobalUnlock(hClipboardData);
+
+    SetClipboardData(CF_TEXT, hClipboardData);
+
+    CloseClipboard();
+  }
 }
 
 i32 round(f32 v) {
@@ -372,7 +410,7 @@ void DoubleCapacityIfFull() {
   capacity = (capacity == 0) ? 4 : (capacity * 2);
   content = (char*)valloc(capacity);
   if (currentStr) {
-    myMemMove(content, currentStr, size);
+    memmove(content, currentStr, size);
     vfree(currentStr);
   }
 }
@@ -380,7 +418,7 @@ void DoubleCapacityIfFull() {
 void BufferRemoveChars(int from, int to) {
   int num_to_shift = size - (to + 1);
 
-  myMemMove(content + from, content + to + 1, num_to_shift);
+  memmove(content + from, content + to + 1, num_to_shift);
 
   size -= (to - from + 1);
   isSaved = false;
@@ -395,7 +433,7 @@ void BufferInsertChars(char* chars, i32 len, i32 at) {
 
     char* from = content + at;
     char* to = content + at + len;
-    myMemMove(to, from, size - at);
+    memmove(to, from, size - at);
   } else {
     size = len;
   }
@@ -942,6 +980,14 @@ Range RemoveSelection() {
   return range;
 }
 
+void PasteIntoCurrentPosition() {
+  i32 size;
+  char* clipData = ReadFromClipboard(win, &size);
+  BufferInsertChars(clipData, size, pos);
+  UpdateCursor(pos + size);
+  vfree(clipData);
+}
+
 void HandleKeyPress() {
   isMatch = false;
   Key key = keys[keysLen - 1];
@@ -962,10 +1008,12 @@ void HandleKeyPress() {
       }
     }
     if (IsCommand("v")) {
-
       mode = Visual;
       selectionStart = pos;
       ignoreNextCharEvent = true;
+    }
+    if (IsCommand("p")) {
+      PasteIntoCurrentPosition();
     }
 
     if (IsCommand("V")) {
@@ -1051,6 +1099,16 @@ void HandleKeyPress() {
       selectionStart = pos;
       pos = tmp;
     }
+    if (IsCommand("y")) {
+      Range range = GetSelectionRange();
+      WriteToClipboard(win, content + range.left, range.right - range.left + 1);
+      mode = Normal;
+    }
+    if (IsCommand("p")) {
+      RemoveSelection();
+      PasteIntoCurrentPosition();
+      mode = Normal;
+    }
   } else if (mode == VisualLine) {
     HandleNormalAndVisualMotions();
     if (IsCommand("d")) {
@@ -1067,6 +1125,16 @@ void HandleKeyPress() {
       i32 tmp = selectionStart;
       selectionStart = pos;
       pos = tmp;
+    }
+    if (IsCommand("y")) {
+      Range range = GetSelectionRange();
+      WriteToClipboard(win, content + range.left, range.right - range.left + 1);
+      mode = Normal;
+    }
+    if (IsCommand("p")) {
+      RemoveSelection();
+      PasteIntoCurrentPosition();
+      mode = Normal;
     }
   } else if (mode == Insert) {
     if (key.ch == VK_ESCAPE) {
@@ -1093,6 +1161,9 @@ void HandleKeyPress() {
       i32 to = JumpWordBackward(pos);
       BufferRemoveChars(to, pos - 1);
       UpdateCursor(to);
+    } else if (key.ch == 'v' && key.ctrl) {
+      PasteIntoCurrentPosition();
+
     } else if (key.ch >= ' ' && key.ch <= '}') {
       char chars[1] = {(char)key.ch};
       BufferInsertChars(chars, 1, pos);
@@ -1154,7 +1225,8 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
     // todo: ugly want to detect shortcuts, because <C-w> is not char WM_CHAR
     if (((mode == Normal || mode == Visual || mode == VisualLine) && IsAlphaNumeric((char)ch)) ||
         (mode == SearchInput && ch == 'w' && IsKeyPressed(VK_CONTROL)) ||
-        (mode == Insert && ch == 'w' && IsKeyPressed(VK_CONTROL))) {
+        (mode == Insert && ch == 'w' && IsKeyPressed(VK_CONTROL)) ||
+        (mode == Insert && ch == 'v' && IsKeyPressed(VK_CONTROL))) {
       AddKey(ch);
       ignoreNextCharEvent = true;
     }
