@@ -72,7 +72,9 @@ i64 capacity;
 Spring offset;
 bool isSaved = true;
 TEXTMETRICA m;
-const char* path = "progress.txt";
+const char* path1 = "main.cpp";
+const char* path2 = "progress.txt";
+const char* currentPath;
 
 #define ArrayLength(array) (sizeof(array) / sizeof(array[0]))
 
@@ -239,6 +241,25 @@ struct CursorPos {
   i32 row;
   i32 col;
 };
+
+void ReadFileIntoBuffer(const char* filepath) {
+  currentPath = filepath;
+  i64 fileSize = GetMyFileSize(currentPath);
+  char* temp = (char*)valloc(fileSize);
+  ReadFileInto(currentPath, fileSize, temp);
+  capacity = fileSize * 2;
+  content = (char*)valloc(capacity);
+  size = 0;
+  for (i32 i = 0; i < fileSize; i++) {
+    if (temp[i] != '\r')
+      content[size++] = temp[i];
+  }
+  vfree(temp);
+
+
+  pos = 0;
+  offset.current = offset.target = 0;
+}
 
 CursorPos GetCursorPos() {
   CursorPos res = {0};
@@ -662,6 +683,14 @@ bool IsCtrlCommand(char ch) {
   return false;
 }
 
+bool IsAltCommand(char ch) {
+  if (keysLen == 1 && keys[0].ch == ch && keys[0].alt) {
+    isMatch = true;
+    return true;
+  }
+  return false;
+}
+
 struct Range {
   i32 left;
   i32 right;
@@ -861,6 +890,16 @@ void HandleKeyPress() {
     keysLen = 0;
   } else if (mode == Normal) {
     HandleComplexCommands();
+    if (IsAltCommand('1')) {
+      WriteMyFile(currentPath, content, size);
+      ReadFileIntoBuffer(path1);
+      isSaved = true;
+    }
+    if (IsAltCommand('2')) {
+      WriteMyFile(currentPath, content, size);
+      ReadFileIntoBuffer(path2);
+      isSaved = true;
+    }
     if (IsCommand("I")) {
       pos = FindLineStart(pos);
       EnterInsert();
@@ -922,7 +961,7 @@ void HandleKeyPress() {
     if (IsCtrlCommand('o'))
       AddLineInside();
     else if (IsCtrlCommand('s')) {
-      WriteMyFile(path, content, size);
+      WriteMyFile(currentPath, content, size);
       isSaved = true;
     } else if (IsCommand("O"))
       AddLineAbove();
@@ -1026,12 +1065,15 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
     // todo: ugly want to detect shortcuts, because <C-w> is not char WM_CHAR
     if ((mode == Normal && IsAlphaNumeric((char)ch)) ||
         (mode == SearchInput && ch == 'w' && IsKeyPressed(VK_CONTROL)) ||
-        (mode == Insert && ch == 'w' && IsKeyPressed(VK_CONTROL))
-   ) {
+        (mode == Insert && ch == 'w' && IsKeyPressed(VK_CONTROL))) {
       AddKey(ch);
       ignoreNextCharEvent = true;
     }
   } break;
+  case WM_SYSCHAR:
+    //disabled the annoying sound of unhandled alt+key
+    return 0;
+    break;
   case WM_DESTROY:
     PostQuitMessage(0);
     isRunning = 0;
@@ -1199,17 +1241,7 @@ extern "C" void WinMainCRTStartup() {
 
   HDC windowDC = GetDC(win);
 
-  i64 fileSize = GetMyFileSize(path);
-  char* temp = (char*)valloc(fileSize);
-  ReadFileInto(path, fileSize, temp);
-  capacity = fileSize * 2;
-  content = (char*)valloc(capacity);
-  size = 0;
-  for (i32 i = 0; i < fileSize; i++) {
-    if (temp[i] != '\r')
-      content[size++] = temp[i];
-  }
-  vfree(temp);
+  ReadFileIntoBuffer(path1);
 
   i64 frameStart = GetPerfCounter();
   f32 freq = (f32)GetPerfFrequency();
