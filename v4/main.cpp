@@ -42,7 +42,7 @@ typedef int32_t i32;
 typedef float f32;
 typedef wchar_t wc;
 
-enum Mode { Normal, Insert, SearchInput };
+enum Mode { Normal, Insert, Visual, VisualLine, SearchInput };
 enum SearchDirection { down, up };
 char searchTerm[255];
 i32 searchTermLen;
@@ -62,6 +62,7 @@ HBITMAP canvasBitmap;
 f32 padding = 20.0f;
 f32 lineHeight = 1.1f;
 i32 pos = 0;
+i32 selectionStart = -1;
 i32 desiredOffset = 0;
 HDC dc;
 HWND win;
@@ -264,16 +265,16 @@ void ReadFileIntoBuffer(const char* filepath) {
   offset.current = offset.target = 0;
 }
 
-CursorPos GetCursorPos() {
+CursorPos GetCursorPos(i32 p) {
   CursorPos res = {0};
   i32 rowStartAt = 0;
-  for (i32 i = 0; i < pos; i++) {
+  for (i32 i = 0; i < p; i++) {
     if (content[i] == '\n') {
       res.row++;
       rowStartAt = i + 1;
     }
   }
-  res.col = pos - rowStartAt;
+  res.col = p - rowStartAt;
   return res;
 }
 
@@ -289,7 +290,7 @@ i32 GetLinesCount() {
 
 void OffsetCenteredOnCursor() {
   f32 lineHeightPx = m.tmHeight * lineHeight;
-  CursorPos p = GetCursorPos();
+  CursorPos p = GetCursorPos(pos);
   f32 cursorY = p.row * lineHeightPx + padding;
   offset.target = Max(cursorY - (canvas.height / 2.0f), 0);
 }
@@ -297,7 +298,7 @@ void ScrollIntoCursor() {
   i32 itemsToLookAhead = 5;
   f32 lineHeightPx = m.tmHeight * lineHeight;
 
-  CursorPos p = GetCursorPos();
+  CursorPos p = GetCursorPos(pos);
 
   f32 cursorY = p.row * lineHeightPx + padding;
 
@@ -705,6 +706,21 @@ struct Range {
   bool isSurrounder;
 };
 
+Range GetSelectionRange() {
+  i32 selectionLeft = Min(selectionStart, pos);
+  i32 selectionRight = Max(selectionStart, pos);
+
+  if (mode == Visual) {
+    return Range{.left = selectionLeft, .right = selectionRight};
+  } else if (mode == VisualLine) {
+    selectionLeft = FindLineStart(selectionLeft);
+    selectionRight = FindLineEnd(selectionRight);
+
+    return Range{.left = selectionLeft, .right = selectionRight};
+  }
+  return {};
+}
+
 Range PerformMotion(const char* motion, i32 count) {
   Range range = {-1, -1, motion};
   if (strequal(motion, "gg")) {
@@ -888,6 +904,43 @@ void SearchNext(i32 from) {
     }
   }
 }
+void HandleNormalAndVisualMotions() {
+  if (IsCommand("l"))
+    MoveRight();
+  if (IsCommand("h"))
+    MoveLeft();
+  if (IsCommand("j"))
+    MoveDown();
+  if (IsCommand("k"))
+    MoveUp();
+  if (IsCommand("w"))
+    UpdateCursor(JumpWordForward(pos));
+  if (IsCommand("b"))
+    UpdateCursor(JumpWordBackward(pos));
+  if (IsCommand("gg")) {
+    UpdateCursorWithoutDesiredOffset(ApplyDesiredOffset(0));
+  }
+  if (IsCommand("G")) {
+    UpdateCursorWithoutDesiredOffset(ApplyDesiredOffset(FindLineStart(size - 1)));
+  }
+  if (IsCommand("0")) {
+    UpdateCursor(FindLineStart(pos));
+  }
+  if (IsCommand("$")) {
+    UpdateCursor(FindLineEnd(pos));
+  }
+  if (IsCommand("^")) {
+    UpdateCursor(FindLineStart(pos) + GetOffset(pos));
+  }
+}
+
+Range RemoveSelection() {
+  Range range = GetSelectionRange();
+
+  BufferRemoveChars(range.left, range.right);
+  UpdateCursor(range.left);
+  return range;
+}
 
 void HandleKeyPress() {
   isMatch = false;
@@ -897,6 +950,7 @@ void HandleKeyPress() {
     keysLen = 0;
   } else if (mode == Normal) {
     HandleComplexCommands();
+    HandleNormalAndVisualMotions();
 
     if (keysLen == 1 && key.alt) {
       i32 index = key.ch - '1';
@@ -907,18 +961,22 @@ void HandleKeyPress() {
         isMatch = true;
       }
     }
+    if (IsCommand("v")) {
+
+      mode = Visual;
+      selectionStart = pos;
+      ignoreNextCharEvent = true;
+    }
+
+    if (IsCommand("V")) {
+      mode = VisualLine;
+      selectionStart = pos;
+      ignoreNextCharEvent = true;
+    }
+
     if (IsCommand("I")) {
       UpdateCursor(FindLineStart(pos));
       EnterInsert();
-    }
-    if (IsCommand("0")) {
-      UpdateCursor(FindLineStart(pos));
-    }
-    if (IsCommand("$")) {
-      UpdateCursor(FindLineEnd(pos));
-    }
-    if (IsCommand("^")) {
-      UpdateCursor(FindLineStart(pos) + GetOffset(pos));
     }
     if (IsCommand("i")) {
       EnterInsert();
@@ -936,12 +994,6 @@ void HandleKeyPress() {
     if (IsCommand("a")) {
       UpdateCursor(pos + 1);
       EnterInsert();
-    }
-    if (IsCommand("gg")) {
-      UpdateCursorWithoutDesiredOffset(ApplyDesiredOffset(0));
-    }
-    if (IsCommand("G")) {
-      UpdateCursorWithoutDesiredOffset(ApplyDesiredOffset(FindLineStart(size - 1)));
     }
     if (IsCommand("q")) {
       PostQuitMessage(0);
@@ -984,18 +1036,38 @@ void HandleKeyPress() {
     else if (IsCommand("o"))
       AddLineBelow();
 
-    if (IsCommand("l"))
-      MoveRight();
-    if (IsCommand("h"))
-      MoveLeft();
-    if (IsCommand("j"))
-      MoveDown();
-    if (IsCommand("k"))
-      MoveUp();
-    if (IsCommand("w"))
-      UpdateCursor(JumpWordForward(pos));
-    if (IsCommand("b"))
-      UpdateCursor(JumpWordBackward(pos));
+  } else if (mode == Visual) {
+    HandleNormalAndVisualMotions();
+    if (IsCommand("d")) {
+      RemoveSelection();
+      mode = Normal;
+    }
+    if (IsCommand("c")) {
+      RemoveSelection();
+      EnterInsert();
+    }
+    if (IsCommand("o")) {
+      i32 tmp = selectionStart;
+      selectionStart = pos;
+      pos = tmp;
+    }
+  } else if (mode == VisualLine) {
+    HandleNormalAndVisualMotions();
+    if (IsCommand("d")) {
+      RemoveSelection();
+      mode = Normal;
+    }
+    if (IsCommand("c")) {
+      i32 offset = GetOffset(pos);
+      Range range = RemoveSelection();
+      InsertNewLineWithOffset(range.left - 1, offset);
+      EnterInsert();
+    }
+    if (IsCommand("o")) {
+      i32 tmp = selectionStart;
+      selectionStart = pos;
+      pos = tmp;
+    }
   } else if (mode == Insert) {
     if (key.ch == VK_ESCAPE) {
       isMatch = 1;
@@ -1080,7 +1152,7 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
       ch = ToLower(ch);
 
     // todo: ugly want to detect shortcuts, because <C-w> is not char WM_CHAR
-    if ((mode == Normal && IsAlphaNumeric((char)ch)) ||
+    if (((mode == Normal || mode == Visual || mode == VisualLine) && IsAlphaNumeric((char)ch)) ||
         (mode == SearchInput && ch == 'w' && IsKeyPressed(VK_CONTROL)) ||
         (mode == Insert && ch == 'w' && IsKeyPressed(VK_CONTROL))) {
       AddKey(ch);
@@ -1308,7 +1380,29 @@ extern "C" void WinMainCRTStartup() {
       y += (f32)m.tmHeight * lineHeight;
     }
 
-    CursorPos p = GetCursorPos();
+    // print selection
+    if ((mode == Visual || mode == VisualLine) && selectionStart >= 0) {
+
+      Range range = GetSelectionRange();
+      i32 selectionLeft = range.left;
+      i32 selectionRight = range.right;
+
+      CursorPos sel1 = GetCursorPos(selectionLeft);
+      f32 x1 = padding + (f32)sel1.col * (f32)s.cx;
+      f32 y1 = padding + sel1.row * m.tmHeight * lineHeight;
+      TextColors(0xeeeeee, 0x232D39);
+
+      while (selectionLeft <= selectionRight) {
+        i32 lineEnd = Min(FindLineEnd(selectionLeft), selectionRight);
+
+        TextOutA(dc, x1, y1, content + selectionLeft, lineEnd - selectionLeft + 1);
+        selectionLeft = lineEnd + 1;
+        x1 = padding;
+        y1 += m.tmHeight * lineHeight;
+      }
+    }
+
+    CursorPos p = GetCursorPos(pos);
     u32 cursorbg = 0xFFDC32;
     if (mode == Insert)
       cursorbg = 0xFF3269;
