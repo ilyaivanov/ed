@@ -980,11 +980,28 @@ Range RemoveSelection() {
   return range;
 }
 
-void PasteIntoCurrentPosition() {
+enum PasteMethod { DoNotPasteOnNewLine, PasteOnNewLine };
+
+void PasteIntoCurrentPosition(PasteMethod method) {
   i32 size;
   char* clipData = ReadFromClipboard(win, &size);
-  BufferInsertChars(clipData, size, pos);
-  UpdateCursor(pos + size);
+  bool isPastingOnNewLine = false;
+
+  if (method == PasteOnNewLine) {
+    for (i32 i = 0; i < size; i++) {
+      if (clipData[i] == '\n') {
+        isPastingOnNewLine = true;
+        break;
+      }
+    }
+  }
+  i32 target = pos;
+  if(isPastingOnNewLine )
+    target = FindLineEnd(pos) + 1;
+  
+
+  BufferInsertChars(clipData, size, target);
+  UpdateCursor(target+ size);
   vfree(clipData);
 }
 
@@ -1013,7 +1030,7 @@ void HandleKeyPress() {
       ignoreNextCharEvent = true;
     }
     if (IsCommand("p")) {
-      PasteIntoCurrentPosition();
+      PasteIntoCurrentPosition(PasteOnNewLine);
     }
 
     if (IsCommand("V")) {
@@ -1106,7 +1123,7 @@ void HandleKeyPress() {
     }
     if (IsCommand("p")) {
       RemoveSelection();
-      PasteIntoCurrentPosition();
+      PasteIntoCurrentPosition(PasteOnNewLine);
       mode = Normal;
     }
   } else if (mode == VisualLine) {
@@ -1133,7 +1150,7 @@ void HandleKeyPress() {
     }
     if (IsCommand("p")) {
       RemoveSelection();
-      PasteIntoCurrentPosition();
+      PasteIntoCurrentPosition(PasteOnNewLine);
       mode = Normal;
     }
   } else if (mode == Insert) {
@@ -1162,7 +1179,7 @@ void HandleKeyPress() {
       BufferRemoveChars(to, pos - 1);
       UpdateCursor(to);
     } else if (key.ch == 'v' && key.ctrl) {
-      PasteIntoCurrentPosition();
+      PasteIntoCurrentPosition(DoNotPasteOnNewLine);
 
     } else if (key.ch >= ' ' && key.ch <= '}') {
       char chars[1] = {(char)key.ch};
@@ -1222,7 +1239,7 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
     if (!IsKeyPressed(VK_SHIFT))
       ch = ToLower(ch);
 
-    // todo: ugly want to detect shortcuts, because <C-w> is not char WM_CHAR
+    // todo: ugly way to detect shortcuts, because <C-w> is not char WM_CHAR
     if (((mode == Normal || mode == Visual || mode == VisualLine) && IsAlphaNumeric((char)ch)) ||
         (mode == SearchInput && ch == 'w' && IsKeyPressed(VK_CONTROL)) ||
         (mode == Insert && ch == 'w' && IsKeyPressed(VK_CONTROL)) ||
@@ -1478,6 +1495,8 @@ extern "C" void WinMainCRTStartup() {
     u32 cursorbg = 0xFFDC32;
     if (mode == Insert)
       cursorbg = 0xFF3269;
+    if (mode == Visual || mode == VisualLine)
+      cursorbg = 0xF0EBE6;
     TextColors(0x000000, cursorbg);
     i32 cursorX = x + p.col * s.cx;
     i32 cursorY = padding + p.row * m.tmHeight * lineHeight - offset.current;
