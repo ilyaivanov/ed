@@ -872,7 +872,7 @@ void PerformOperatorOnRange(const char* op, Range range) {
     i32 offset = GetOffset(pos);
     BufferRemoveChars(range.left, range.right);
 
-    if (!strequal(range.motion, "w"))
+    if (!strequal(range.motion, "w") && !range.isSurrounder)
       InsertNewLineWithOffset(range.left - 1, offset);
     else
       UpdateCursor(range.left);

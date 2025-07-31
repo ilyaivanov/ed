@@ -30,10 +30,39 @@ Progress
    - dl d5l
    - dib cab
 
+
  28.07
   Plan
     - Generalize operations, such that you will have less if branches
-	- Scroll
-	- Undo\redo
-	- Visual\VisualLine modes
+    - Scroll
+    - Undo\redo
+    - Visual\VisualLine modes
+  Actually skipped the day completely
 
+ 29.07
+   - Generalize operations. Now motions and actions are separate
+   - Scroll
+   - Search
+   - backspace to remove char during insert mode
+   - <C-w> to remove word during insert
+   - Enter in insert mode
+   - cw removes new line for the last word (probably shouldn't)
+
+ 30.07
+   - Switch between buffers via <A-1> and <A-2>. No split for now 
+   - Visual and VisualLine modes
+   - yank and paste
+
+ 31.07
+   y Visual and VisualLine mode is broken
+   y Proper buffer management when pasting. Check if new lines are paste after\before line if buffer has \n
+
+ Backlog
+   - Collapse\open nested items
+   - tab \ shift tab
+   - move line/selection up/down
+   - History of buffers
+   - Undo/redo
+   - Autorun build.bat
+   - Integrate with ctags
+   - Syntax highlight
