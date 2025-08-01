@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <windows.h>
 
+//
 // config
 bool isCaseSensitiveSearch = false;
 //
@@ -39,6 +40,8 @@ typedef int64_t i64;
 typedef uint64_t u64;
 typedef uint32_t u32;
 typedef int32_t i32;
+typedef uint8_t u8;
+typedef int8_t i8;
 typedef float f32;
 typedef wchar_t wc;
 
@@ -55,6 +58,29 @@ typedef struct MyBitmap {
   u32* pixels;
 } MyBitmap;
 
+enum ChangeType { Added, Removed }; // Replaced
+
+struct Change {
+  ChangeType type;
+  int at;
+
+  // shows how much text added in a change, comes first in text, can be zero
+  int addedTextSize;
+
+  // shows how much text removed in a change, comes second in text, can be zero
+  int removedTextSize;
+
+  // two fields are non-zero for Replaced ChangeType
+  char text[];
+};
+
+struct ChangeArena {
+  Change* contents;
+  int lastChangeIndex; // -1 is the default value
+  int capacity;
+  int changesCount;
+};
+
 BITMAPINFO bitmapInfo;
 MyBitmap canvas;
 HBITMAP canvasBitmap;
@@ -70,11 +96,13 @@ Mode mode = Normal;
 char* content;
 i64 size;
 i64 capacity;
+ChangeArena changes;
 Spring offset;
 bool isSaved = true;
 TEXTMETRICA m;
 
 const char* files[] = {
+    "play.txt",
     "main.cpp",
     "progress.txt",
     "build.bat",
@@ -82,6 +110,7 @@ const char* files[] = {
 const char* currentPath;
 
 #define ArrayLength(array) (sizeof(array) / sizeof(array[0]))
+#define KB(v) (1024 * v)
 
 inline void* valloc(size_t size) {
   return VirtualAlloc(0, size, MEM_COMMIT, PAGE_READWRITE);
@@ -216,6 +245,8 @@ void ReadFileInto(const char* path, u32 fileSize, char* buffer) {
   DWORD bytesRead;
   ReadFile(file, buffer, fileSize, &bytesRead, 0);
   CloseHandle(file);
+  changes.lastChangeIndex = -1;
+  changes.changesCount = 0;
 }
 
 void WriteMyFile(const char* path, char* content, int size) {
@@ -262,6 +293,167 @@ void WriteToClipboard(HWND window, char* text, i32 len) {
 
     CloseClipboard();
   }
+}
+
+//
+// Changes
+//
+
+i32 ChangeSize(Change* c) {
+  return sizeof(Change) + c->addedTextSize + c->removedTextSize;
+}
+
+Change* NextChange(Change* c) {
+  return (Change*)(((u8*)c) + ChangeSize(c));
+}
+
+Change* GetChangeAt(ChangeArena* changes, int at) {
+  Change* c = changes->contents;
+
+  for (int i = 0; i < at; i++)
+    c = NextChange(c);
+
+  return c;
+}
+
+void DoubleCapacityIfFull() {
+  char* currentStr = content;
+  capacity = (capacity == 0) ? 4 : (capacity * 2);
+  content = (char*)valloc(capacity);
+  if (currentStr) {
+    memmove(content, currentStr, size);
+    vfree(currentStr);
+  }
+}
+
+void DoubleChangeArenaCapacity(ChangeArena* changes) {
+  i32 capacity = changes->capacity * 2;
+  Change* newContents = (Change*)valloc(capacity);
+  memmove(newContents, changes->contents, changes->capacity);
+  vfree(changes->contents);
+  changes->contents = newContents;
+  changes->capacity = capacity;
+}
+
+int GetChangeArenaSize(ChangeArena* arena) {
+  Change* c = arena->contents;
+  int res = 0;
+  for (int i = 0; i < arena->changesCount; i++) {
+    res += ChangeSize(c);
+    c = NextChange(c);
+  }
+  return res;
+}
+
+Change* AddNewChange(int changeSize) {
+  int size = GetChangeArenaSize(&changes) + changeSize;
+  if (size >= changes.capacity)
+    DoubleChangeArenaCapacity(&changes);
+
+  changes.lastChangeIndex += 1;
+  changes.changesCount = changes.lastChangeIndex + 1;
+
+  return GetChangeAt(&changes, changes.lastChangeIndex);
+}
+
+void BufferRemoveChars(int from, int to) {
+  int num_to_shift = size - (to + 1);
+
+  memmove(content + from, content + to + 1, num_to_shift);
+
+  size -= (to - from + 1);
+  isSaved = false;
+}
+
+void BufferInsertChars(char* chars, i32 len, i32 at) {
+  while (size + len >= capacity)
+    DoubleCapacityIfFull();
+
+  char* file = content;
+  if (size != 0) {
+
+    size += len;
+
+    char* from = file + at;
+    char* to = file + at + len;
+    memmove(to, from, size - at);
+  } else {
+    size = len;
+  }
+
+  for (i32 i = at; i < at + len; i++) {
+    file[i] = chars[i - at];
+  }
+  isSaved = false;
+}
+
+void ApplyChange(Change* c) {
+  if (c->type == Added)
+    BufferInsertChars(c->text, c->addedTextSize, c->at);
+  if (c->type == Removed)
+    BufferRemoveChars(c->at, c->at + c->addedTextSize - 1);
+  isSaved = false;
+}
+
+void UndoChange(Change* c) {
+  if (c->type == Added)
+    BufferRemoveChars(c->at, c->at + c->addedTextSize - 1);
+  if (c->type == Removed)
+    BufferInsertChars(c->text, c->addedTextSize, c->at);
+  isSaved = false;
+}
+
+//
+// Change API methods below
+//
+Change* UndoLastChange() {
+  int lastChangeAt = changes.lastChangeIndex;
+  if (lastChangeAt >= 0) {
+    Change* changeToUndo = GetChangeAt(&changes, lastChangeAt);
+    changes.lastChangeIndex--;
+
+    UndoChange(changeToUndo);
+    return changeToUndo;
+  }
+  return 0;
+}
+
+Change* RedoLastChange() {
+  int pendingChangeAt = changes.lastChangeIndex + 1;
+  if (pendingChangeAt < changes.changesCount) {
+    Change* c = GetChangeAt(&changes, pendingChangeAt);
+
+    ApplyChange(c);
+    changes.lastChangeIndex++;
+    return c;
+  }
+  return 0;
+}
+
+void RemoveChars(int from, int to) {
+  int changeSize = sizeof(Change) + (to - from + 1);
+  Change* c = AddNewChange(changeSize);
+
+  c->type = Removed;
+  c->at = from;
+  c->addedTextSize = to - from + 1;
+  c->removedTextSize = 0;
+  memmove(c->text, content + from, c->addedTextSize);
+
+  ApplyChange(c);
+}
+
+void InsertChars(char* chars, i32 len, i32 at) {
+  int changeSize = sizeof(Change) + len;
+  Change* c = AddNewChange(changeSize);
+
+  c->type = Added;
+  c->at = at;
+  c->addedTextSize = len;
+  c->removedTextSize = 0;
+  memmove(c->text, chars, c->addedTextSize);
+
+  ApplyChange(c);
 }
 
 i32 round(f32 v) {
@@ -403,45 +595,6 @@ void Size(LPARAM lParam) {
   canvas.bytesPerPixel = 4;
 
   SelectObject(dc, canvasBitmap);
-}
-
-void DoubleCapacityIfFull() {
-  char* currentStr = content;
-  capacity = (capacity == 0) ? 4 : (capacity * 2);
-  content = (char*)valloc(capacity);
-  if (currentStr) {
-    memmove(content, currentStr, size);
-    vfree(currentStr);
-  }
-}
-
-void BufferRemoveChars(int from, int to) {
-  int num_to_shift = size - (to + 1);
-
-  memmove(content + from, content + to + 1, num_to_shift);
-
-  size -= (to - from + 1);
-  isSaved = false;
-}
-
-void BufferInsertChars(char* chars, i32 len, i32 at) {
-  while (size + len >= capacity)
-    DoubleCapacityIfFull();
-
-  if (size != 0) {
-    size += len;
-
-    char* from = content + at;
-    char* to = content + at + len;
-    memmove(to, from, size - at);
-  } else {
-    size = len;
-  }
-
-  for (i32 i = at; i < at + len; i++) {
-    content[i] = chars[i - at];
-  }
-  isSaved = false;
 }
 
 u32 IsWhitespace(char ch) {
@@ -616,7 +769,7 @@ void InsertNewLineWithOffset(i32 where, i32 offset) {
   char toInsert[255] = {'\n'};
   for (i32 i = 0; i < offset; i++)
     toInsert[i + 1] = ' ';
-  BufferInsertChars(toInsert, offset + 1, where);
+  InsertChars(toInsert, offset + 1, where);
   if (where == 0)
     UpdateCursor(where + offset);
   else
@@ -860,7 +1013,7 @@ inline bool IsValid(Range range) {
 void InsertNewLineWithOffset(i32 where, i32 offset);
 void PerformOperatorOnRange(const char* op, Range range) {
   if (strequal(op, "d")) {
-    BufferRemoveChars(range.left, range.right);
+    RemoveChars(range.left, range.right);
 
     if (strequal(range.motion, "l"))
       UpdateCursor(ApplyDesiredOffset(range.left));
@@ -870,7 +1023,7 @@ void PerformOperatorOnRange(const char* op, Range range) {
 
   if (strequal(op, "c")) {
     i32 offset = GetOffset(pos);
-    BufferRemoveChars(range.left, range.right);
+    RemoveChars(range.left, range.right);
 
     if (!strequal(range.motion, "w") && !range.isSurrounder)
       InsertNewLineWithOffset(range.left - 1, offset);
@@ -975,7 +1128,7 @@ void HandleNormalAndVisualMotions() {
 Range RemoveSelection() {
   Range range = GetSelectionRange();
 
-  BufferRemoveChars(range.left, range.right);
+  RemoveChars(range.left, range.right);
   UpdateCursor(range.left);
   return range;
 }
@@ -996,12 +1149,11 @@ void PasteIntoCurrentPosition(PasteMethod method) {
     }
   }
   i32 target = pos;
-  if(isPastingOnNewLine )
+  if (isPastingOnNewLine)
     target = FindLineEnd(pos) + 1;
-  
 
-  BufferInsertChars(clipData, size, target);
-  UpdateCursor(target+ size);
+  InsertChars(clipData, size, target);
+  UpdateCursor(target + size);
   vfree(clipData);
 }
 
@@ -1029,6 +1181,11 @@ void HandleKeyPress() {
       selectionStart = pos;
       ignoreNextCharEvent = true;
     }
+    if (IsCommand("u"))
+      UndoLastChange();
+    if (IsCommand("U"))
+      RedoLastChange();
+
     if (IsCommand("p")) {
       PasteIntoCurrentPosition(PasteOnNewLine);
     }
@@ -1073,22 +1230,22 @@ void HandleKeyPress() {
     }
     if (IsCommand("X")) {
       if (pos > 0) {
-        BufferRemoveChars(pos - 1, pos - 1);
+        RemoveChars(pos - 1, pos - 1);
         UpdateCursor(pos - 1);
       }
     }
     if (IsCommand("x")) {
       if (pos < (size - 1))
-        BufferRemoveChars(pos, pos);
+        RemoveChars(pos, pos);
     }
     if (IsCommand("C")) {
       i32 end = FindLineEnd(pos);
-      BufferRemoveChars(pos, end - 1);
+      RemoveChars(pos, end - 1);
       EnterInsert();
     }
     if (IsCommand("D")) {
       i32 end = FindLineEnd(pos);
-      BufferRemoveChars(pos, end - 1);
+      RemoveChars(pos, end - 1);
     }
 
     if (IsCtrlCommand('o'))
@@ -1164,26 +1321,26 @@ void HandleKeyPress() {
       char toInsert[255] = {'\n'};
       for (i32 i = 0; i < offset; i++)
         toInsert[i + 1] = ' ';
-      BufferInsertChars(toInsert, offset + 1, pos);
+      InsertChars(toInsert, offset + 1, pos);
       UpdateCursor(pos + offset + 1);
     }
 
     if (key.ch == VK_BACK) {
       if (pos > 0) {
-        BufferRemoveChars(pos - 1, pos - 1);
+        RemoveChars(pos - 1, pos - 1);
         UpdateCursor(pos - 1);
       }
     }
     if (key.ch == 'w' && key.ctrl) {
       i32 to = JumpWordBackward(pos);
-      BufferRemoveChars(to, pos - 1);
+      RemoveChars(to, pos - 1);
       UpdateCursor(to);
     } else if (key.ch == 'v' && key.ctrl) {
       PasteIntoCurrentPosition(DoNotPasteOnNewLine);
 
     } else if (key.ch >= ' ' && key.ch <= '}') {
       char chars[1] = {(char)key.ch};
-      BufferInsertChars(chars, 1, pos);
+      InsertChars(chars, 1, pos);
       UpdateCursor(pos + 1);
     }
   } else if (mode == SearchInput) {
@@ -1414,6 +1571,10 @@ extern "C" void WinMainCRTStartup() {
   SelectObject(dc, f);
 
   GetTextMetrics(dc, &m);
+
+  changes.capacity = KB(40);
+  changes.contents = (Change*)valloc(changes.capacity);
+  changes.lastChangeIndex = -1;
   // GLYPHSET* set;
   // set = (GLYPHSET*)valloc(GetFontUnicodeRanges(dc, nullptr));
   // GetFontUnicodeRanges(dc, set);
