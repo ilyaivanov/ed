@@ -1776,7 +1776,7 @@ extern "C" void WinMainCRTStartup() {
 
       CursorPos sel1 = GetCursorPos(selectionLeft);
       f32 x1 = padding + (f32)sel1.col * (f32)s.cx;
-      f32 y1 = padding + sel1.row * m.tmHeight * lineHeight;
+      f32 y1 = padding - offset.current + sel1.row * m.tmHeight * lineHeight;
       TextColors(0xeeeeee, 0x232D39);
 
       while (selectionLeft <= selectionRight) {
