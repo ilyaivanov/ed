@@ -37,6 +37,7 @@ extern "C" int _fltused = 0x9875;
 
 int isRunning = 1;
 int isF = 0;
+bool isInitialized;
 
 HMODULE libModule;
 typedef int64_t i64;
@@ -54,6 +55,9 @@ char searchTerm[255];
 i32 searchTermLen;
 SearchDirection searchDirection;
 
+char* buildLogs;
+i32 buildLogsLen;
+bool isFailedToBuild = false;
 i64 buildTimeMs = 0;
 i64 formatTimeMs = 0;
 // TODO: there is definitelly a better way, currently just trying to make calling part easy without
@@ -135,6 +139,7 @@ i32 pos = 0;
 i32 selectionStart = -1;
 i32 desiredOffset = 0;
 HDC dc;
+HDC windowDC;
 HWND win;
 Mode mode = Normal;
 char* content;
@@ -160,7 +165,7 @@ typedef struct Rect {
   i32 height;
 } Rect;
 
-typedef void Render(MyBitmap* bitmap, Rect rect, float d);
+typedef void Render(HDC dc, MyBitmap* bitmap, Rect rect, float d);
 Render* render;
 
 inline void* valloc(size_t size) {
@@ -374,7 +379,7 @@ void RunCommand(char* cmd, char* output, int* len) {
   WaitForSingleObject(pi.hProcess, INFINITE);
 
   DWORD bytesRead = 0, totalRead = 0;
-  while (ReadFile(hRead, output + totalRead, 1, &bytesRead, NULL) && totalRead < *len - 1) {
+  while (ReadFile(hRead, output + totalRead, 1, &bytesRead, NULL)) {
     totalRead += bytesRead;
   }
   output[totalRead] = '\0';
@@ -892,15 +897,20 @@ void RunCode() {
   }
   WriteMyFile(currentPath, content, size);
   isSaved = true;
-  char* output = (char*)valloc(KB(100));
-  i32 len;
   const char* cmd = "cmd /c lib.bat";
-  RunCommand((char*)cmd, output, &len);
-  libModule = LoadLibrary("play.dll");
-  if (libModule) {
-    render = (Render*)GetProcAddress(libModule, "GetSome");
+  RunCommand((char*)cmd, buildLogs, &buildLogsLen);
+
+  const char* expectedlogs = "   Creating library build\\play.lib and object build\\play.exp\r\n";
+
+  if (strequal(buildLogs, expectedlogs)) {
+    isFailedToBuild = false;
+    libModule = LoadLibrary("build\\play.dll");
+    if (libModule) {
+      render = (Render*)GetProcAddress(libModule, "GetSome");
+    }
+  } else {
+    isFailedToBuild = true;
   }
-  vfree(output);
   buildTimeMs = round(f32(GetPerfCounter() - buildStart) * 1000.0f / (f32)GetPerfFrequency());
 }
 
@@ -1543,6 +1553,7 @@ void AddKey(i64 ch) {
   HandleKeyPress();
 }
 
+void Draw(f32 deltaSec);
 LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
   switch (message) {
   case WM_MOUSEWHEEL:
@@ -1586,9 +1597,12 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
     PAINTSTRUCT ps;
     HDC hdc = BeginPaint(handle, &ps);
     EndPaint(handle, &ps);
+
   } break;
   case WM_SIZE:
     Size(lParam);
+    if (isInitialized)
+      Draw(0);
     break;
   }
   return DefWindowProc(handle, message, wParam, lParam);
@@ -1654,7 +1668,11 @@ void PrintFooter(f32 deltaMs) {
   Append("ms ");
 
   if (buildTimeMs != 0) {
-    Append("Build: ");
+    if (isFailedToBuild)
+      Append("Build fail: ");
+    else
+      Append("Build ok: ");
+
     Append((i32)buildTimeMs);
     Append("ms ");
   }
@@ -1698,6 +1716,113 @@ f32 lerp(f32 from, f32 to, f32 v) {
   return (1 - v) * from + to * v;
 }
 
+void DrawParagraph(i32 x, i32 y, char* text, i32 len) {
+  TextColors(0xff2222, 0x000000);
+  i32 i = 0;
+  while (i < len) {
+    i32 lineStart = i;
+    while (text[i] != '\n' && i < len)
+      i++;
+
+    TextOutA(dc, x, (i32)y, text + lineStart, i - lineStart);
+
+    if (i >= len)
+      break;
+    i++;
+    y += (f32)m.tmHeight * lineHeight;
+  }
+}
+
+void Draw(f32 deltaSec) {
+  memset(canvas.pixels, 0x00, canvas.width * canvas.height * 4);
+
+  f32 pageHeight = GetLinesCount() * m.tmHeight * lineHeight + padding * 2;
+  if (pageHeight > canvas.height) {
+    i32 scrollHeight = f32(canvas.height * canvas.height) / f32(pageHeight);
+
+    f32 maxOffset = pageHeight - canvas.height;
+    f32 maxScrollY = canvas.height - scrollHeight;
+    f32 scrollY = lerp(0, maxScrollY, offset.current / maxOffset);
+
+    i32 scrollWidth = 10;
+    PaintRect(canvas.width - scrollWidth, scrollY, scrollWidth, scrollHeight, 0x555555);
+  }
+
+  TextColors(0xd0d0d0, 0x000000);
+
+  i32 x = padding;
+  f32 y = padding - offset.current;
+
+  SIZE s;
+  const char* ch = "w";
+  GetTextExtentPoint32A(dc, ch, 1, &s);
+
+  i32 i = 0;
+  while (i < size) {
+    i32 lineStart = i;
+    while (content[i] != '\n' && i < size)
+      i++;
+
+    TextOutA(dc, x, (i32)y, content + lineStart, i - lineStart);
+
+    if (i >= size)
+      break;
+    i++;
+    y += (f32)m.tmHeight * lineHeight;
+  }
+
+  // print selection
+  if ((mode == Visual || mode == VisualLine) && selectionStart >= 0) {
+
+    Range range = GetSelectionRange();
+    i32 selectionLeft = range.left;
+    i32 selectionRight = range.right;
+
+    CursorPos sel1 = GetCursorPos(selectionLeft);
+    f32 x1 = padding + (f32)sel1.col * (f32)s.cx;
+    f32 y1 = padding - offset.current + sel1.row * m.tmHeight * lineHeight;
+    TextColors(0xeeeeee, 0x232D39);
+
+    while (selectionLeft <= selectionRight) {
+      i32 lineEnd = Min(FindLineEnd(selectionLeft), selectionRight);
+
+      TextOutA(dc, x1, y1, content + selectionLeft, lineEnd - selectionLeft + 1);
+      selectionLeft = lineEnd + 1;
+      x1 = padding;
+      y1 += m.tmHeight * lineHeight;
+    }
+  }
+
+  CursorPos p = GetCursorPos(pos);
+  u32 cursorbg = 0xFFDC32;
+  if (mode == Insert)
+    cursorbg = 0xFF3269;
+  if (mode == Visual || mode == VisualLine)
+    cursorbg = 0xF0EBE6;
+  TextColors(0x000000, cursorbg);
+  i32 cursorX = x + p.col * s.cx;
+  i32 cursorY = padding + p.row * m.tmHeight * lineHeight - offset.current;
+  if (mode == Insert)
+    PaintRect(cursorX - 2, cursorY, 2, m.tmHeight, cursorbg);
+  else {
+    PaintRect(cursorX, cursorY, s.cx, m.tmHeight, cursorbg);
+
+    TextOutA(dc, cursorX, cursorY, content + pos, 1);
+  }
+
+  PrintFooter(deltaSec * 1000.0f);
+
+  Rect r = {canvas.width / 2, 0, canvas.width / 2, canvas.height};
+  if (render) {
+    render(dc, &canvas, r, deltaSec);
+  } else if (isFailedToBuild) {
+    DrawParagraph(r.x, r.y, buildLogs, buildLogsLen);
+  }
+
+  StretchDIBits(windowDC, 0, 0, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height,
+                canvas.pixels, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+}
+
 extern "C" void WinMainCRTStartup() {
   PreventWindowsDPIScaling();
   dc = CreateCompatibleDC(0);
@@ -1709,6 +1834,7 @@ extern "C" void WinMainCRTStartup() {
 
   GetTextMetrics(dc, &m);
 
+  buildLogs = (char*)valloc(KB(128));
   changes.capacity = KB(40);
   changes.contents = (Change*)valloc(changes.capacity);
   changes.lastChangeIndex = -1;
@@ -1717,12 +1843,14 @@ extern "C" void WinMainCRTStartup() {
   // GetFontUnicodeRanges(dc, set);
   // i32 r = set->cGlyphsSupported;
 
-  HDC windowDC = GetDC(win);
+  windowDC = GetDC(win);
 
   ReadFileIntoBuffer(files[0]);
 
   i64 frameStart = GetPerfCounter();
   f32 freq = (f32)GetPerfFrequency();
+  f32 lastFrameSec = 0;
+  isInitialized = true;
   while (isRunning) {
     MSG msg;
 
@@ -1730,94 +1858,11 @@ extern "C" void WinMainCRTStartup() {
       TranslateMessage(&msg);
       DispatchMessage(&msg);
     }
-    memset(canvas.pixels, 0x00, canvas.width * canvas.height * 4);
-
-    f32 pageHeight = GetLinesCount() * m.tmHeight * lineHeight + padding * 2;
-    if (pageHeight > canvas.height) {
-      i32 scrollHeight = f32(canvas.height * canvas.height) / f32(pageHeight);
-
-      f32 maxOffset = pageHeight - canvas.height;
-      f32 maxScrollY = canvas.height - scrollHeight;
-      f32 scrollY = lerp(0, maxScrollY, offset.current / maxOffset);
-
-      i32 scrollWidth = 10;
-      PaintRect(canvas.width - scrollWidth, scrollY, scrollWidth, scrollHeight, 0x555555);
-    }
-
-    TextColors(0xd0d0d0, 0x000000);
-
-    i32 x = padding;
-    f32 y = padding - offset.current;
-
-    SIZE s;
-    const char* ch = "w";
-    GetTextExtentPoint32A(dc, ch, 1, &s);
-
-    i32 i = 0;
-    while (i < size) {
-      i32 lineStart = i;
-      while (content[i] != '\n' && i < size)
-        i++;
-
-      TextOutA(dc, x, (i32)y, content + lineStart, i - lineStart);
-
-      if (i >= size)
-        break;
-      i++;
-      y += (f32)m.tmHeight * lineHeight;
-    }
-
-    // print selection
-    if ((mode == Visual || mode == VisualLine) && selectionStart >= 0) {
-
-      Range range = GetSelectionRange();
-      i32 selectionLeft = range.left;
-      i32 selectionRight = range.right;
-
-      CursorPos sel1 = GetCursorPos(selectionLeft);
-      f32 x1 = padding + (f32)sel1.col * (f32)s.cx;
-      f32 y1 = padding - offset.current + sel1.row * m.tmHeight * lineHeight;
-      TextColors(0xeeeeee, 0x232D39);
-
-      while (selectionLeft <= selectionRight) {
-        i32 lineEnd = Min(FindLineEnd(selectionLeft), selectionRight);
-
-        TextOutA(dc, x1, y1, content + selectionLeft, lineEnd - selectionLeft + 1);
-        selectionLeft = lineEnd + 1;
-        x1 = padding;
-        y1 += m.tmHeight * lineHeight;
-      }
-    }
-
-    CursorPos p = GetCursorPos(pos);
-    u32 cursorbg = 0xFFDC32;
-    if (mode == Insert)
-      cursorbg = 0xFF3269;
-    if (mode == Visual || mode == VisualLine)
-      cursorbg = 0xF0EBE6;
-    TextColors(0x000000, cursorbg);
-    i32 cursorX = x + p.col * s.cx;
-    i32 cursorY = padding + p.row * m.tmHeight * lineHeight - offset.current;
-    if (mode == Insert)
-      PaintRect(cursorX - 2, cursorY, 2, m.tmHeight, cursorbg);
-    else {
-      PaintRect(cursorX, cursorY, s.cx, m.tmHeight, cursorbg);
-
-      TextOutA(dc, cursorX, cursorY, content + pos, 1);
-    }
+    Draw(lastFrameSec);
     i64 frameEnd = GetPerfCounter();
+    lastFrameSec = (frameEnd - frameStart) / freq;
+    UpdateSpring(&offset, lastFrameSec);
 
-    f32 deltaSec = (frameEnd - frameStart) / freq;
-    PrintFooter(deltaSec * 1000.0f);
-
-    if (render) {
-      Rect r = {canvas.width / 2, 0, canvas.width / 2, canvas.height};
-      render(&canvas, r, deltaSec);
-    }
-    UpdateSpring(&offset, deltaSec);
-
-    StretchDIBits(windowDC, 0, 0, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height,
-                  canvas.pixels, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
     frameStart = frameEnd;
   }
 

@@ -2,6 +2,8 @@
 #include <stdint.h>
 #include <windows.h>
 
+int _fltused = 0x9875;
+
 int _DllMainCRTStartup(HINSTANCE const instance, DWORD const reason, void* const reserved) {
   return 1;
 }
@@ -12,6 +14,7 @@ typedef uint32_t u32;
 typedef int32_t i32;
 typedef uint8_t u8;
 typedef int8_t i8;
+typedef float f32;
 
 typedef struct MyBitmap {
   i32 width;
@@ -35,15 +38,11 @@ void PaintRect(MyBitmap* bitmap, i32 x, i32 y, i32 width, i32 height, u32 color)
   }
 }
 
-__declspec(dllexport) void GetSome(MyBitmap* bitmap, Rect rect, float d) {
-  u32 colors[] = {0xff2222, 0x22ff22, 0x2222ff};
+f32 time = 0;
+__declspec(dllexport) void GetSome(HDC dc, MyBitmap* bitmap, Rect rect, float d) {
+  time += d * 100;
 
-  int x = rect.x;
-  int y = rect.y;
-  int width = rect.width / 10;
-  int height = rect.height / 5;
-  for (i32 i = 0; i < 10; i++) {
-    PaintRect(bitmap, x, y, width, height, colors[i % 4]);
-    x += width;
-  }
+  if (time > (rect.width - 20))
+    time = 0;
+  PaintRect(bitmap, rect.x + time, rect.y, 20, 20, 0xffffff);
 }
