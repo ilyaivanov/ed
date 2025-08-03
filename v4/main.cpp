@@ -3,7 +3,9 @@
 #include <stdint.h>
 #include <windows.h>
 
-//
+#define ArrayLength(array) (sizeof(array) / sizeof(array[0]))
+#define KB(v) (1024 * v)
+
 // config
 bool isCaseSensitiveSearch = false;
 //
@@ -36,6 +38,7 @@ extern "C" int _fltused = 0x9875;
 int isRunning = 1;
 int isF = 0;
 
+HMODULE libModule;
 typedef int64_t i64;
 typedef uint64_t u64;
 typedef uint32_t u32;
@@ -50,6 +53,47 @@ enum SearchDirection { down, up };
 char searchTerm[255];
 i32 searchTermLen;
 SearchDirection searchDirection;
+
+i64 buildTimeMs = 0;
+i64 formatTimeMs = 0;
+// TODO: there is definitelly a better way, currently just trying to make calling part easy without
+// variable arguments
+char strBuffer[KB(2)];
+i32 strBufferCurrentPos;
+
+void Append(const char* str) {
+  char* buffer = strBuffer + strBufferCurrentPos;
+  i32 l = 0;
+  while (str[l] != '\0') {
+    buffer[l] = str[l];
+    l++;
+  }
+  strBufferCurrentPos += l;
+}
+
+void Append(char ch) {
+  strBuffer[strBufferCurrentPos++] = ch;
+}
+
+void Append(int v) {
+  char* buffer = strBuffer + strBufferCurrentPos;
+  char temp[20] = {0};
+  i32 l = 0;
+
+  if (v == 0) {
+    temp[l++] = '0';
+  }
+
+  while (v > 0) {
+    temp[l++] = '0' + (v % 10);
+    v /= 10;
+  }
+
+  for (i32 i = l - 1; i >= 0; i--)
+    buffer[l - i - 1] = temp[i];
+
+  strBufferCurrentPos += l;
+}
 
 typedef struct MyBitmap {
   i32 width;
@@ -102,15 +146,22 @@ bool isSaved = true;
 TEXTMETRICA m;
 
 const char* files[] = {
-    "play.txt",
+    "play.c",
     "main.cpp",
     "progress.txt",
     "build.bat",
 };
 const char* currentPath;
 
-#define ArrayLength(array) (sizeof(array) / sizeof(array[0]))
-#define KB(v) (1024 * v)
+typedef struct Rect {
+  i32 x;
+  i32 y;
+  i32 width;
+  i32 height;
+} Rect;
+
+typedef void Render(MyBitmap* bitmap, Rect rect, float d);
+Render* render;
 
 inline void* valloc(size_t size) {
   return VirtualAlloc(0, size, MEM_COMMIT, PAGE_READWRITE);
@@ -295,6 +346,45 @@ void WriteToClipboard(HWND window, char* text, i32 len) {
   }
 }
 
+void RunCommand(char* cmd, char* output, int* len) {
+  HANDLE hRead, hWrite;
+  SECURITY_ATTRIBUTES sa = {sizeof(SECURITY_ATTRIBUTES), NULL, TRUE};
+
+  if (!CreatePipe(&hRead, &hWrite, &sa, KB(128)))
+    return;
+
+  // Ensure the read handle to the pipe is not inherited.
+  SetHandleInformation(hRead, HANDLE_FLAG_INHERIT, 0);
+
+  PROCESS_INFORMATION pi;
+  STARTUPINFO si = {sizeof(STARTUPINFO)};
+  si.dwFlags = STARTF_USESTDHANDLES;
+  si.hStdOutput = hWrite;
+  si.hStdError = hWrite;
+  si.hStdInput = NULL;
+
+  if (!CreateProcess(NULL, cmd, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+    CloseHandle(hWrite);
+    CloseHandle(hRead);
+    return;
+  }
+
+  CloseHandle(hWrite);
+
+  WaitForSingleObject(pi.hProcess, INFINITE);
+
+  DWORD bytesRead = 0, totalRead = 0;
+  while (ReadFile(hRead, output + totalRead, 1, &bytesRead, NULL) && totalRead < *len - 1) {
+    totalRead += bytesRead;
+  }
+  output[totalRead] = '\0';
+  *len = totalRead;
+
+  CloseHandle(pi.hProcess);
+  CloseHandle(pi.hThread);
+  CloseHandle(hRead);
+}
+
 //
 // Changes
 //
@@ -470,6 +560,31 @@ i32 Min(i32 a, i32 b) {
   if (a < b)
     return a;
   return b;
+}
+i32 pow(i32 b, i32 p) {
+  i32 res = 1;
+  for (i32 i = 0; i < p; i++)
+    res *= b;
+  return res;
+}
+
+i32 atoi(char* buff) {
+  i32 res = 0;
+  i32 i = 0;
+  char numbers[20] = {0};
+
+  while (buff[i] != '\0' && buff[i] >= '0' && buff[i] <= '9') {
+    numbers[i] = buff[i];
+    i++;
+  }
+  i32 len = i;
+  i--;
+  while (i >= 0) {
+    res += (numbers[i] - '0') * pow(10, len - i - 1);
+    i--;
+  }
+
+  return res;
 }
 
 struct CursorPos {
@@ -731,6 +846,64 @@ void UpdateCursor(i32 p) {
   UpdateDesiredOffset();
 }
 
+void FormatCode() {
+  i64 formatStart = GetPerfCounter();
+  WriteMyFile(currentPath, content, size);
+  // SaveBuffer(selectedBuffer);
+  strBufferCurrentPos = 0;
+
+  Append("cmd /c clang-format ");
+
+  Append(currentPath);
+  Append(" --cursor=");
+  Append(pos);
+  Append('\0');
+
+  char* output = (char*)valloc(KB(100));
+  i32 outputLen = 0;
+  RunCommand(strBuffer, output, &outputLen);
+
+  if (outputLen > 0) {
+    char* t = output;
+    i32 start = 0;
+    while (t[start] != '\n')
+      start++;
+    start++;
+    i32 newLen = outputLen - start;
+    // Replace text action
+    memmove(content, output + start, newLen);
+    size = newLen;
+    isSaved = false;
+
+    // 12 here is the index of new cursor position in JSON response { "Cursor": 36
+    // I don't want to parse entire JSON yet
+    int newCursor = atoi(output + 12);
+    UpdateCursor(newCursor);
+    vfree(output);
+    formatTimeMs = round(f32(GetPerfCounter() - formatStart) * 1000.0f / (f32)GetPerfFrequency());
+  }
+}
+void RunCode() {
+  i64 buildStart = GetPerfCounter();
+  if (libModule) {
+    render = nullptr;
+    FreeLibrary(libModule);
+    Sleep(12);
+  }
+  WriteMyFile(currentPath, content, size);
+  isSaved = true;
+  char* output = (char*)valloc(KB(100));
+  i32 len;
+  const char* cmd = "cmd /c lib.bat";
+  RunCommand((char*)cmd, output, &len);
+  libModule = LoadLibrary("play.dll");
+  if (libModule) {
+    render = (Render*)GetProcAddress(libModule, "GetSome");
+  }
+  vfree(output);
+  buildTimeMs = round(f32(GetPerfCounter() - buildStart) * 1000.0f / (f32)GetPerfFrequency());
+}
+
 void MoveDown() {
   i32 end = FindLineEnd(pos);
   if (end != (size - 1))
@@ -827,21 +1000,6 @@ bool IsCommand(const char* cmd) {
   return false;
 }
 
-i32 pow(i32 b, i32 p) {
-  i32 res = 1;
-  for (i32 i = 0; i < p; i++)
-    res *= b;
-  return res;
-}
-
-i32 atoi(Key* buff, i32 len) {
-  i32 res = 0;
-  for (i32 i = 0; i < len; i++) {
-    res += pow(buff[i].ch - '0', len - i);
-  }
-  return res;
-}
-
 bool IsComplexCommand(const char* prefix, const char* postfix, i32* count) {
   i32 prefixLen = strlen(prefix);
   i32 postfixLen = strlen(postfix);
@@ -862,7 +1020,12 @@ bool IsComplexCommand(const char* prefix, const char* postfix, i32* count) {
     }
     i32 c = 1;
     if (keysLen > (prefixLen + postfixLen)) {
-      c = atoi(keys + prefixLen, keysLen - (prefixLen + postfixLen));
+      char ks[1024];
+      i32 l = keysLen - (prefixLen + postfixLen);
+      Key* start = keys + prefixLen;
+      for (i32 i = 0; i < l; i++)
+        ks[i] = start[i].ch;
+      c = atoi(ks);
     }
 
     isMatch = true;
@@ -1186,6 +1349,12 @@ void HandleKeyPress() {
     if (IsCommand("U"))
       RedoLastChange();
 
+    if (IsAltCommand('r')) {
+      RunCode();
+    }
+    if (IsAltCommand('f')) {
+      FormatCode();
+    }
     if (IsCommand("p")) {
       PasteIntoCurrentPosition(PasteOnNewLine);
     }
@@ -1467,44 +1636,6 @@ HFONT CreateFont(i32 fontSize, const char* name, i32 weight, i32 quiality) {
                      DEFAULT_PITCH, name);
 }
 
-// TODO: there is definitelly a better way, currently just trying to make calling part easy without
-// variable arguments
-char* strBuffer;
-i32 strBufferCurrentPos;
-void Append(const char* str) {
-  char* buffer = strBuffer + strBufferCurrentPos;
-  i32 l = 0;
-  while (str[l] != '\0') {
-    buffer[l] = str[l];
-    l++;
-  }
-  strBufferCurrentPos += l;
-}
-
-void Append(char ch) {
-  strBuffer[strBufferCurrentPos++] = ch;
-}
-
-void Append(int v) {
-  char* buffer = strBuffer + strBufferCurrentPos;
-  char temp[20] = {0};
-  i32 l = 0;
-
-  if (v == 0) {
-    temp[l++] = '0';
-  }
-
-  while (v > 0) {
-    temp[l++] = '0' + (v % 10);
-    v /= 10;
-  }
-
-  for (i32 i = l - 1; i >= 0; i--)
-    buffer[l - i - 1] = temp[i];
-
-  strBufferCurrentPos += l;
-}
-
 void PrintFooter(f32 deltaMs) {
 
   if (mode == SearchInput)
@@ -1517,10 +1648,21 @@ void PrintFooter(f32 deltaMs) {
   } else if (mode == SearchInput)
     TextOut(dc, 20, canvas.height - 30, "SEARCH", strlen("SEARCH"));
 
-  // Todo: this can be moved outside of function block, I can manipulate just lenth
-  char buff[1024];
-  strBuffer = buff;
   strBufferCurrentPos = 0;
+  Append("Frame: ");
+  Append(i32(deltaMs));
+  Append("ms ");
+
+  if (buildTimeMs != 0) {
+    Append("Build: ");
+    Append((i32)buildTimeMs);
+    Append("ms ");
+  }
+  if (formatTimeMs != 0) {
+    Append("Format: ");
+    Append((i32)formatTimeMs);
+    Append("ms ");
+  }
   Append("Command: ");
   for (i32 i = 0; i < keysLen; i++) {
     if (keys[i].ch == VK_ESCAPE)
@@ -1534,7 +1676,6 @@ void PrintFooter(f32 deltaMs) {
   }
 
   Append(" ");
-
   Append(currentPath);
   Append(" ");
   if (isSaved)
@@ -1544,16 +1685,12 @@ void PrintFooter(f32 deltaMs) {
 
   Append(" ");
 
-  Append("Frame: ");
-  Append(i32(deltaMs));
-  Append("ms ");
-
   SIZE s;
   const char* ch = "w";
   GetTextExtentPoint32A(dc, ch, 1, &s);
 
   TextColors(0x888888, 0x000000);
-  TextOutA(dc, canvas.width - (strBufferCurrentPos * s.cx) - 20, canvas.height - 30, buff,
+  TextOutA(dc, canvas.width - (strBufferCurrentPos * s.cx) - 20, canvas.height - 30, strBuffer,
            strBufferCurrentPos);
 }
 
@@ -1673,6 +1810,10 @@ extern "C" void WinMainCRTStartup() {
     f32 deltaSec = (frameEnd - frameStart) / freq;
     PrintFooter(deltaSec * 1000.0f);
 
+    if (render) {
+      Rect r = {canvas.width / 2, 0, canvas.width / 2, canvas.height};
+      render(&canvas, r, deltaSec);
+    }
     UpdateSpring(&offset, deltaSec);
 
     StretchDIBits(windowDC, 0, 0, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height,
