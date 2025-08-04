@@ -57,12 +57,38 @@ Progress
    y Visual and VisualLine mode is broken
    y Proper buffer management when pasting. Check if new lines are paste after\before line if buffer has \n
 
+ 1.08
+   y Undo\redo
+   y Rebuild and reload dll with calling a render function
+
+ 2.08
+   Skipped
+
+ 3.08
+   - Formatting the code preserving the cursor position
+   
+ 4.08
+   p W B
+   p start working on collapsing items
+   
+ Key features missing
+   y formatting
+   - seach in members (use ctags)
+   - pass events into the rendered area
+   - preserve state between rebuilds (check state version)
+
  Backlog
    - Collapse\open nested items
    - tab \ shift tab
    - move line/selection up/down
+   - show compilation errors
+   - integrate clang-format
    - History of buffers
-   - Undo/redo
    - Autorun build.bat
    - Integrate with ctags
    - Syntax highlight
+   - multiple cursor
+   - cursor history
+   - integrate something like unit\e2e tests into the editor
+   - research on how hard it is to create debugger 
+    

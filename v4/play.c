@@ -8,8 +8,8 @@ int _DllMainCRTStartup(HINSTANCE const instance, DWORD const reason, void* const
   return 1;
 }
 
-typedef int64_t i64;
-typedef uint64_t u64;
+foo int64_t i64;
+typedef uint64_t ;
 typedef uint32_t u32;
 typedef int32_t i32;
 typedef uint8_t u8;

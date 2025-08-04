@@ -897,7 +897,7 @@ void RunCode() {
   }
   WriteMyFile(currentPath, content, size);
   isSaved = true;
-  const char* cmd = "cmd /c lib.bat";
+  const char* cmd = "cmd /c build.bat";
   RunCommand((char*)cmd, buildLogs, &buildLogsLen);
 
   const char* expectedlogs = "   Creating library build\\play.lib and object build\\play.exp\r\n";
@@ -1156,6 +1156,27 @@ Range SurroundText(const char* motion, i32 count) {
     }
     return range;
   }
+  if (strequal(motion, "iw") || strequal(motion, "aw")) {
+    range.left = pos;
+    range.right = pos;
+
+    while (range.left > 0 && IsAlphaNumeric(content[range.left - 1]))
+      range.left--;
+    while (range.right < (size - 1) && IsAlphaNumeric(content[range.right + 1]))
+      range.right++;
+
+    if (strequal(motion, "aw")) {
+      if (range.right < (size - 1) && content[range.right + 1] == ' ') {
+        range.right++;
+
+        while (range.right < (size - 1) && content[range.right + 1] == ' ')
+          range.right++;
+      }
+    }
+
+    return range;
+  }
+
   if (strequal(motion, "iB") || strequal(motion, "aB")) {
     range.left = pos;
     range.right = pos;
@@ -1210,7 +1231,7 @@ void PerformOperatorOnRange(const char* op, Range range) {
 void HandleComplexCommands() {
   const char* motions[] = {"w", "l", "gg", "G"};
   const char* operators[] = {"d", "c"};
-  const char* surrounders[] = {"ib", "ab", "iB", "aB"};
+  const char* surrounders[] = {"ib", "ab", "iB", "aB", "iw", "aw"};
 
   i32 count;
   for (i32 j = 0; j < ArrayLength(operators); j++) {
