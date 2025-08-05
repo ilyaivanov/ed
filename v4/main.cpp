@@ -895,18 +895,14 @@ void FormatCode() {
     formatTimeMs = round(f32(GetPerfCounter() - formatStart) * 1000.0f / (f32)GetPerfFrequency());
   }
 }
-void RunCode() {
-  i64 buildStart = GetPerfCounter();
+void FreeLib() {
   if (libModule) {
     render = nullptr;
     FreeLibrary(libModule);
-    Sleep(12);
   }
-  WriteMyFile(currentPath, content, size);
-  isSaved = true;
-  const char* cmd = "cmd /c build.bat";
-  RunCommand((char*)cmd, buildLogs, &buildLogsLen);
+}
 
+void LoadLib() {
   const char* expectedlogs = "   Creating library build\\play.lib and object build\\play.exp\r\n";
 
   if (strequal(buildLogs, expectedlogs)) {
@@ -918,6 +914,17 @@ void RunCode() {
   } else {
     isFailedToBuild = true;
   }
+}
+void RunCode(const char* path) {
+  i64 buildStart = GetPerfCounter();
+  WriteMyFile(currentPath, content, size);
+  isSaved = true;
+  strBufferCurrentPos = 0;
+  Append("cmd /c ");
+  Append(path);
+  Append('\0');
+  RunCommand(strBuffer, buildLogs, &buildLogsLen);
+
   buildTimeMs = round(f32(GetPerfCounter() - buildStart) * 1000.0f / (f32)GetPerfFrequency());
 }
 
@@ -1141,6 +1148,7 @@ Range PerformMotion(const char* motion, i32 count) {
 
   return range;
 }
+
 Range SurroundText(const char* motion, i32 count) {
   Range range = {-1, -1, motion, true};
   if (strequal(motion, "ib") || strequal(motion, "ab")) {
@@ -1453,7 +1461,13 @@ void HandleKeyPress() {
       RedoLastChange();
 
     if (IsAltCommand('r')) {
-      RunCode();
+      RunCode("build.bat");
+    }
+    if (IsAltCommand('t')) {
+      FreeLib();
+      Sleep(12);
+      RunCode("lib.bat");
+      LoadLib();
     }
     if (IsAltCommand('f')) {
       FormatCode();
@@ -1919,7 +1933,7 @@ void Draw(f32 deltaSec) {
 }
 
 bool IsRunningAnyAnimations() {
-  return Abs(offset.current - offset.target) < 10;
+  return Abs(offset.current - offset.target) < 0.1;
 }
 
 extern "C" void WinMainCRTStartup() {
@@ -1956,14 +1970,15 @@ extern "C" void WinMainCRTStartup() {
       DispatchMessage(&msg);
     }
 
-    // TODO: this is naive way not to heat CPU at the start. I will review how I deal with idle state and animations 
+    // TODO: this is naive way not to heat CPU at the start. I will review how I deal with idle
+    // state and animations
     if (!IsRunningAnyAnimations()) {
       Draw(lastFrameSec);
       UpdateSpring(&offset, lastFrameSec);
-    }
-    else {
-       // consider using timeBeginPeriod for better accuracy. Notice that LEAN_AND_MEAN flag excludes timeapi.h
-       Sleep(8);
+    } else {
+      // consider using timeBeginPeriod for better accuracy. Notice that LEAN_AND_MEAN flag excludes
+      // timeapi.h
+      Sleep(8);
     }
 
     i64 frameEnd = GetPerfCounter();

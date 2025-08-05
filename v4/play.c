@@ -44,5 +44,9 @@ __declspec(dllexport) void GetSome(HDC dc, MyBitmap* bitmap, Rect rect, float d)
 
   if (time > (rect.width - 20))
     time = 0;
-  PaintRect(bitmap, rect.x + time, rect.y, 20, 20, 0xffffff);
+    
+  f32 width = rect.width / 10;
+  u32 colors[] = {0xff2222, 0x22ff22, 0x2222ff};
+  for (i32 i = 0; i < 10; i++)
+    PaintRect(bitmap, rect.x + i * width, rect.y, width, 20, colors[i % 3]);
 }

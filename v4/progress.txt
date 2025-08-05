@@ -69,15 +69,15 @@ Progress
    
  4.08
    - iw aw surroundings
- 
+
  5.08
    y tree-based traversal
-   p integrate ctags
-   p W B
-   p start working on collapsing items
+   
+ Next Steps
+   - Add split view
+   - integrate ctags
    
  Key features missing
-   y formatting
    - seach in members (use ctags)
    - pass events into the rendered area
    - preserve state between rebuilds (check state version)
@@ -96,4 +96,3 @@ Progress
    - cursor history
    - integrate something like unit\e2e tests into the editor
    - research on how hard it is to create debugger 
-    
