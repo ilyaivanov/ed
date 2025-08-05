@@ -566,6 +566,13 @@ i32 Min(i32 a, i32 b) {
     return a;
   return b;
 }
+
+f32 Abs(f32 v) {
+  if (v < 0)
+    return -v;
+  return v;
+}
+
 i32 pow(i32 b, i32 p) {
   i32 res = 1;
   for (i32 i = 0; i < p; i++)
@@ -823,7 +830,7 @@ i32 JumpWordBackward(i32 p) {
 }
 
 i32 GetOffset(i32 p) {
-  i32 start = FindLineStart(pos);
+  i32 start = FindLineStart(p);
   i32 off = start;
   while (content[off] == ' ')
     off++;
@@ -1289,15 +1296,80 @@ void SearchNext(i32 from) {
     }
   }
 }
+
+void UpdateCursorOnTreeMotion(i32 newPos) {
+  i32 p = Max(newPos, FindLineStart(newPos) + GetOffset(newPos));
+  UpdateCursorWithoutDesiredOffset(ApplyDesiredOffset(p));
+}
+
+void MoveDownTreewise() {
+  i32 currentOffset = GetOffset(pos);
+  i32 p = FindLineEnd(pos) + 1;
+  while (p < (size - 1)) {
+    i32 offset = GetOffset(p);
+    if (offset <= currentOffset && content[p] != '\n')
+      break;
+
+    p = FindLineEnd(p) + 1;
+  }
+  UpdateCursorOnTreeMotion(p);
+}
+
+void MoveUpTreewise() {
+  i32 currentOffset = GetOffset(pos);
+  i32 p = FindLineStart(FindLineStart(pos) - 1);
+  while (p > 0) {
+    i32 offset = GetOffset(p);
+    if (offset <= currentOffset && content[p] != '\n')
+      break;
+
+    p = FindLineStart(p - 1);
+  }
+  if (p >= 0)
+    UpdateCursorOnTreeMotion(p);
+}
+
+void MoveLeftTreewise() {
+  i32 currentOffset = GetOffset(pos);
+  if (currentOffset == 0)
+    return;
+  i32 p = FindLineStart(FindLineStart(pos) - 1);
+  while (p > 0) {
+    i32 offset = GetOffset(p);
+    if (offset < currentOffset && content[p] != '\n')
+      break;
+
+    p = FindLineStart(p - 1);
+  }
+  if (p >= 0)
+    UpdateCursorOnTreeMotion(p);
+}
+
+void MoveRightTreewise() {
+  i32 currentOffset = GetOffset(pos);
+  i32 p = FindLineEnd(pos) + 1;
+  if (GetOffset(p) > currentOffset)
+    UpdateCursorOnTreeMotion(p);
+}
+
 void HandleNormalAndVisualMotions() {
-  if (IsCommand("l"))
-    MoveRight();
-  if (IsCommand("h"))
+  if (IsCtrlCommand('h'))
+    MoveLeftTreewise();
+  else if (IsCommand("h"))
     MoveLeft();
-  if (IsCommand("j"))
+  else if (IsCtrlCommand('l'))
+    MoveRightTreewise();
+  else if (IsCommand("l"))
+    MoveRight();
+  else if (IsCtrlCommand('j'))
+    MoveDownTreewise();
+  else if (IsCommand("j"))
     MoveDown();
-  if (IsCommand("k"))
+  else if (IsCtrlCommand('k'))
+    MoveUpTreewise();
+  else if (IsCommand("k"))
     MoveUp();
+
   if (IsCommand("w"))
     UpdateCursor(JumpWordForward(pos));
   if (IsCommand("b"))
@@ -1567,14 +1639,15 @@ void HandleKeyPress() {
   }
 }
 
+void Draw(f32 deltaSec);
 void AddKey(i64 ch) {
   keys[keysLen].alt = IsKeyPressed(VK_MENU);
   keys[keysLen].ctrl = IsKeyPressed(VK_CONTROL);
   keys[keysLen++].ch = ch;
   HandleKeyPress();
+  InvalidateRect(win, 0, false);
 }
 
-void Draw(f32 deltaSec);
 LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
   switch (message) {
   case WM_MOUSEWHEEL:
@@ -1617,6 +1690,7 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
   case WM_PAINT: {
     PAINTSTRUCT ps;
     HDC hdc = BeginPaint(handle, &ps);
+    Draw(0.33333);
     EndPaint(handle, &ps);
 
   } break;
@@ -1844,6 +1918,10 @@ void Draw(f32 deltaSec) {
                 canvas.pixels, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
 }
 
+bool IsRunningAnyAnimations() {
+  return Abs(offset.current - offset.target) < 10;
+}
+
 extern "C" void WinMainCRTStartup() {
   PreventWindowsDPIScaling();
   dc = CreateCompatibleDC(0);
@@ -1859,10 +1937,6 @@ extern "C" void WinMainCRTStartup() {
   changes.capacity = KB(40);
   changes.contents = (Change*)valloc(changes.capacity);
   changes.lastChangeIndex = -1;
-  // GLYPHSET* set;
-  // set = (GLYPHSET*)valloc(GetFontUnicodeRanges(dc, nullptr));
-  // GetFontUnicodeRanges(dc, set);
-  // i32 r = set->cGlyphsSupported;
 
   windowDC = GetDC(win);
 
@@ -1872,6 +1946,8 @@ extern "C" void WinMainCRTStartup() {
   f32 freq = (f32)GetPerfFrequency();
   f32 lastFrameSec = 0;
   isInitialized = true;
+  Draw(lastFrameSec);
+
   while (isRunning) {
     MSG msg;
 
@@ -1879,11 +1955,19 @@ extern "C" void WinMainCRTStartup() {
       TranslateMessage(&msg);
       DispatchMessage(&msg);
     }
-    Draw(lastFrameSec);
+
+    // TODO: this is naive way not to heat CPU at the start. I will review how I deal with idle state and animations 
+    if (!IsRunningAnyAnimations()) {
+      Draw(lastFrameSec);
+      UpdateSpring(&offset, lastFrameSec);
+    }
+    else {
+       // consider using timeBeginPeriod for better accuracy. Notice that LEAN_AND_MEAN flag excludes timeapi.h
+       Sleep(8);
+    }
+
     i64 frameEnd = GetPerfCounter();
     lastFrameSec = (frameEnd - frameStart) / freq;
-    UpdateSpring(&offset, lastFrameSec);
-
     frameStart = frameEnd;
   }
 

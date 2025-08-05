@@ -68,6 +68,11 @@ Progress
    - Formatting the code preserving the cursor position
    
  4.08
+   - iw aw surroundings
+ 
+ 5.08
+   y tree-based traversal
+   p integrate ctags
    p W B
    p start working on collapsing items
    
