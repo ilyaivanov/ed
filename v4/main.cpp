@@ -49,7 +49,7 @@ typedef int8_t i8;
 typedef float f32;
 typedef wchar_t wc;
 
-enum Mode { Normal, Insert, Visual, VisualLine, SearchInput };
+enum Mode { Normal, Insert, Visual, VisualLine, SearchInput, OutlineInput };
 enum SearchDirection { down, up };
 char searchTerm[255];
 i32 searchTermLen;
@@ -64,6 +64,10 @@ i64 formatTimeMs = 0;
 // variable arguments
 char strBuffer[KB(2)];
 i32 strBufferCurrentPos;
+
+char pattern[200] = "";
+i32 patternLen = 0;
+i32 selectedOutlineItem = 0;
 
 void Append(const char* str) {
   char* buffer = strBuffer + strBufferCurrentPos;
@@ -166,7 +170,9 @@ typedef struct Rect {
 } Rect;
 
 typedef void Render(HDC dc, MyBitmap* bitmap, Rect rect, float d);
+typedef void Teardown();
 Render* render;
+Teardown* teardown;
 
 inline void* valloc(size_t size) {
   return VirtualAlloc(0, size, MEM_COMMIT, PAGE_READWRITE);
@@ -193,6 +199,85 @@ size_t strlen(const char* str) {
   while (str[res] != '\0')
     res++;
   return res;
+}
+u32 IsWhitespace(char ch) {
+  return ch == ' ' || ch == '\n';
+}
+
+u32 IsNumeric(char ch) {
+  return (ch >= '0' && ch <= '9');
+}
+
+u32 IsAlphaNumeric(char ch) {
+  return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
+}
+
+u32 IsAsciiChar(char ch) {
+  return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
+}
+
+bool IsPrintable(char ch) {
+  return ch >= ' ' && ch <= '}';
+}
+
+u32 ToLower(char ch) {
+  if (ch >= 'A' && ch <= 'Z')
+    return ch + ('a' - 'A');
+  return ch;
+}
+
+u32 ToUpper(char ch) {
+  if (ch >= 'a' && ch <= 'a')
+    return ch - ('a' - 'A');
+  return ch;
+}
+
+u32 IsPunctuation(char ch) {
+  // use a lookup table
+  const char* punctuation = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
+
+  const char* p = punctuation;
+  while (*p) {
+    if (ch == *p) {
+      return 1;
+    }
+    p++;
+  }
+  return 0;
+}
+
+int IndexOf(char* sub, char* overall) {
+  i32 termIndex = 0;
+  i32 searchTermLen = strlen(sub);
+  for (i32 i = 0; overall[i]; i++) {
+    if (ToLower(overall[i]) == ToLower(sub[termIndex])) {
+      termIndex++;
+    } else {
+      termIndex = 0;
+    }
+
+    if (termIndex >= searchTermLen) {
+      return i - searchTermLen + 1;
+    }
+  }
+  return -1;
+}
+
+int IndexOfCaseSensitive(char* sub, char* overall) {
+  i32 termIndex = 0;
+  i32 searchTermLen = strlen(sub);
+  for (i32 i = 0; overall[i]; i++) {
+    if (overall[i] == sub[termIndex]) {
+      termIndex++;
+    } else {
+      termIndex = 0;
+    }
+
+    if (termIndex >= searchTermLen) {
+      return i - searchTermLen + 1;
+    }
+  }
+  return -1;
 }
 
 bool strequal(const char* a, const char* b) {
@@ -378,16 +463,90 @@ void RunCommand(char* cmd, char* output, int* len) {
 
   WaitForSingleObject(pi.hProcess, INFINITE);
 
-  DWORD bytesRead = 0, totalRead = 0;
-  while (ReadFile(hRead, output + totalRead, 1, &bytesRead, NULL)) {
-    totalRead += bytesRead;
+  if (output && len) {
+    DWORD bytesRead = 0, totalRead = 0;
+    while (ReadFile(hRead, output + totalRead, 1, &bytesRead, NULL)) {
+      totalRead += bytesRead;
+    }
+    output[totalRead] = '\0';
+    *len = totalRead;
   }
-  output[totalRead] = '\0';
-  *len = totalRead;
 
   CloseHandle(pi.hProcess);
   CloseHandle(pi.hThread);
   CloseHandle(hRead);
+}
+
+typedef struct CtagEntry {
+  char name[100];
+  char filename[50];
+  char pattern[100];
+  char type;
+  char def[200];
+} CtagEntry;
+
+CtagEntry* entries;
+int entriesCount;
+
+void ReadCtagsFile() {
+  if (!entries)
+    entries = (CtagEntry*)valloc(2000 * sizeof(CtagEntry));
+  else
+    memset(entries, 0, 2000 * sizeof(CtagEntry));
+
+  entriesCount = 0;
+  int fileSize = GetMyFileSize("tags");
+  char* memory = (char*)valloc(fileSize);
+  ReadFileInto("tags", fileSize, memory);
+
+  int pos = 0;
+  while (memory[pos] == '!') {
+    while (memory[pos] != '\n')
+      pos++;
+    pos++;
+  }
+  // name  filename  pattern  type  info\n
+  int currentField = 0;
+  int fieldStart = pos;
+  while (pos < fileSize) {
+    while (memory[pos] != '\n') {
+
+      if (memory[pos] == '\t') {
+        char* destination;
+        if (currentField == 0)
+          destination = (char*)&entries[entriesCount].name;
+        if (currentField == 1)
+          destination = (char*)&entries[entriesCount].filename;
+        if (currentField == 2)
+          destination = (char*)&entries[entriesCount].pattern;
+        if (currentField == 3)
+          destination = (char*)&entries[entriesCount].type;
+
+        if (currentField == 2) {
+          char* start = &memory[fieldStart] + 2;
+          int len = pos - fieldStart - 2 - 3;
+          if (memory[pos - 4] == '$')
+            len -= 1;
+          memmove(destination, start, len);
+
+        } else
+          memmove(destination, &memory[fieldStart], pos - fieldStart);
+
+        currentField++;
+        fieldStart = pos + 1;
+      }
+      pos++;
+    }
+
+    memmove(&entries[entriesCount].def, &memory[fieldStart], pos - fieldStart);
+
+    currentField = 0;
+    entriesCount++;
+    pos++;
+    fieldStart = pos;
+  }
+
+  vfree(memory);
 }
 
 //
@@ -724,52 +883,6 @@ void Size(LPARAM lParam) {
   SelectObject(dc, canvasBitmap);
 }
 
-u32 IsWhitespace(char ch) {
-  return ch == ' ' || ch == '\n';
-}
-
-u32 IsNumeric(char ch) {
-  return (ch >= '0' && ch <= '9');
-}
-
-u32 IsAlphaNumeric(char ch) {
-  return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
-}
-
-u32 IsAsciiChar(char ch) {
-  return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
-}
-
-bool IsPrintable(char ch) {
-  return ch >= ' ' && ch <= '}';
-}
-
-u32 ToLower(char ch) {
-  if (ch >= 'A' && ch <= 'Z')
-    return ch + ('a' - 'A');
-  return ch;
-}
-
-u32 ToUpper(char ch) {
-  if (ch >= 'a' && ch <= 'a')
-    return ch - ('a' - 'A');
-  return ch;
-}
-
-u32 IsPunctuation(char ch) {
-  // use a lookup table
-  const char* punctuation = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
-
-  const char* p = punctuation;
-  while (*p) {
-    if (ch == *p) {
-      return 1;
-    }
-    p++;
-  }
-  return 0;
-}
-
 i32 FindLineStart(i32 p) {
   while (p > 0 && content[p - 1] != '\n')
     p--;
@@ -897,7 +1010,11 @@ void FormatCode() {
 }
 void FreeLib() {
   if (libModule) {
+    if (teardown) {
+      teardown();
+    }
     render = nullptr;
+    teardown = nullptr;
     FreeLibrary(libModule);
   }
 }
@@ -910,6 +1027,7 @@ void LoadLib() {
     libModule = LoadLibrary("build\\play.dll");
     if (libModule) {
       render = (Render*)GetProcAddress(libModule, "GetSome");
+      teardown = (Teardown*)GetProcAddress(libModule, "Teardown");
     }
   } else {
     isFailedToBuild = true;
@@ -926,6 +1044,7 @@ void RunCode(const char* path) {
   RunCommand(strBuffer, buildLogs, &buildLogsLen);
 
   buildTimeMs = round(f32(GetPerfCounter() - buildStart) * 1000.0f / (f32)GetPerfFrequency());
+  RunCommand((char*)"build\\main.exe", 0, 0);
 }
 
 void MoveDown() {
@@ -1450,6 +1569,13 @@ void HandleKeyPress() {
         isMatch = true;
       }
     }
+    if (IsCommand(" s")) {
+      WriteMyFile(currentPath, content, size);
+
+      RunCommand((char*)"cmd /c ctags *", 0, 0);
+      ReadCtagsFile();
+      mode = OutlineInput;
+    }
     if (IsCommand("v")) {
       mode = Visual;
       selectionStart = pos;
@@ -1646,6 +1772,57 @@ void HandleKeyPress() {
       SearchNext(pos);
     }
     isMatch = 1;
+  } else if (mode == OutlineInput) {
+
+    if (key.ch == VK_BACK) {
+      patternLen = Max(patternLen - 1, 0);
+      pattern[patternLen] = '\0';
+    }
+    if (key.ch == VK_RETURN) {
+
+      i32 currentItem = 0;
+      for (i32 i = 0; i < entriesCount; i++) {
+        char* f = entries[i].name;
+        i32 index = IndexOf(pattern, entries[i].name);
+        if (index >= 0) {
+          if (currentItem == selectedOutlineItem) {
+
+            if (!strequal(entries[i].filename, currentPath)) {
+              WriteMyFile(currentPath, content, size);
+              char* path;
+              for (i32 f = 0; f < ArrayLength(files); f++) {
+                if (strequal(files[f], entries[i].filename)) {
+                  ReadFileIntoBuffer(files[f]);
+                  isSaved = true;
+                  break;
+                }
+              }
+            }
+
+            i32 positionInFile = IndexOfCaseSensitive(entries[i].pattern, content);
+            UpdateCursor(positionInFile);
+
+            break;
+          } else {
+            currentItem++;
+          }
+        }
+      }
+      mode = Normal;
+    }
+
+    if (key.ch == 'j' && key.ctrl) {
+      selectedOutlineItem++;
+    } else if (key.ch == 'k' && key.ctrl) {
+      selectedOutlineItem = Max(0, selectedOutlineItem - 1);
+    } else if (key.ch == 'w' && key.ctrl) {
+      patternLen = 0;
+      pattern[patternLen] = '\0';
+    } else if (IsPrintable(key.ch)) {
+      pattern[patternLen++] = (char)key.ch;
+      pattern[patternLen] = '\0';
+    }
+    isMatch = 1;
   }
 
   if (isMatch) {
@@ -1687,6 +1864,7 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
     // todo: ugly way to detect shortcuts, because <C-w> is not char WM_CHAR
     if (((mode == Normal || mode == Visual || mode == VisualLine) && IsAlphaNumeric((char)ch)) ||
         (mode == SearchInput && ch == 'w' && IsKeyPressed(VK_CONTROL)) ||
+        (mode == OutlineInput && IsKeyPressed(VK_CONTROL)) ||
         (mode == Insert && ch == 'w' && IsKeyPressed(VK_CONTROL)) ||
         (mode == Insert && ch == 'v' && IsKeyPressed(VK_CONTROL))) {
       AddKey(ch);
@@ -1842,6 +2020,80 @@ void DrawParagraph(i32 x, i32 y, char* text, i32 len) {
   }
 }
 
+void RenderOutline(HDC dc, Rect rect) {
+  if (mode != OutlineInput)
+    return;
+  TEXTMETRICA m;
+  SIZE s;
+  GetTextMetrics(dc, &m);
+  GetTextExtentPoint32A(dc, "w", 1, &s);
+
+  i32 y = 0;
+  if (mode == OutlineInput)
+    TextColors(0xffffff, 0x000000);
+  else
+    TextColors(0x888888, 0x000000);
+
+  TextOut(dc, rect.x - patternLen * s.cx, y, pattern, patternLen);
+  y += m.tmHeight;
+  i32 currentItemInList = 0;
+  for (i32 i = 0; i < entriesCount; i++) {
+    char* f = entries[i].name;
+    u32 color = 0xff0000;
+    char type = entries[i].type;
+    if (type == 'f')
+      color = 0xDCDCAA;
+    if (type == 's' || type == 't')
+      color = 0x46C8B1;
+    if (type == 'd')
+      color = 0xCB5EFF;
+    if (type == 'v')
+      color = 0xA0DAFB;
+
+    u32 bg = 0x000000;
+    if (currentItemInList == selectedOutlineItem)
+      bg = 0x666666;
+
+    i32 startX = rect.x - s.cx * strlen(f);
+    if (patternLen == 0) {
+      TextColors(color, bg);
+      TextOut(dc, startX, rect.y + y, f, strlen(f));
+      if (!strequal(entries[i].filename, currentPath)) {
+        TextColors(0x777777, 0x000000);
+        TextOut(dc, rect.x - s.cx * Max(35, strlen(f) + strlen(entries[i].filename) + 1),
+                rect.y + y, entries[i].filename, strlen(entries[i].filename));
+      }
+      y += m.tmHeight;
+      currentItemInList++;
+    } else {
+      i32 index = IndexOf(pattern, entries[i].name);
+      if (index >= 0) {
+
+        // first part
+        TextColors(color, bg);
+        TextOut(dc, startX, rect.y + y, f, index);
+
+        // matching path
+        TextColors(0xffffff, bg);
+        TextOut(dc, startX + index * s.cx, rect.y + y, f + index, patternLen);
+
+        // right path
+        TextColors(color, bg);
+        TextOut(dc, startX + (index + patternLen) * s.cx, rect.y + y, f + index + patternLen,
+                strlen(f) - (index + patternLen));
+
+        if (!strequal(entries[i].filename, currentPath)) {
+          TextColors(0x777777, 0x000000);
+          TextOut(dc, rect.x - s.cx * Max(40, strlen(f) + strlen(entries[i].filename) + 1),
+                  rect.y + y, entries[i].filename, strlen(entries[i].filename));
+        }
+        y += m.tmHeight;
+        currentItemInList++;
+      }
+    }
+  }
+}
+
 void Draw(f32 deltaSec) {
   memset(canvas.pixels, 0x00, canvas.width * canvas.height * 4);
 
@@ -1927,6 +2179,10 @@ void Draw(f32 deltaSec) {
   } else if (isFailedToBuild) {
     DrawParagraph(r.x, r.y, buildLogs, buildLogsLen);
   }
+  if (!render) {
+    r.x = canvas.width;
+  }
+  RenderOutline(dc, r);
 
   StretchDIBits(windowDC, 0, 0, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height,
                 canvas.pixels, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
