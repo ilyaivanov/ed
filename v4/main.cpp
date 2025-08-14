@@ -49,7 +49,7 @@ typedef int8_t i8;
 typedef float f32;
 typedef wchar_t wc;
 
-enum Mode { Normal, Insert, Visual, VisualLine, SearchInput, OutlineInput };
+enum Mode { Normal, Insert, Visual, VisualLine, Execution, SearchInput, OutlineInput };
 enum SearchDirection { down, up };
 char searchTerm[255];
 i32 searchTermLen;
@@ -154,12 +154,7 @@ Spring offset;
 bool isSaved = true;
 TEXTMETRICA m;
 
-const char* files[] = {
-    "play.c",
-    "main.cpp",
-    "progress.txt",
-    "build.bat",
-};
+const char* files[] = {"play.c", "main.cpp", "progress.txt", "build.bat", "lib.bat", "notes.txt"};
 const char* currentPath;
 
 typedef struct Rect {
@@ -170,8 +165,11 @@ typedef struct Rect {
 } Rect;
 
 typedef void Render(HDC dc, MyBitmap* bitmap, Rect rect, float d);
+typedef LRESULT OnLibEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam);
 typedef void Teardown();
+
 Render* render;
+OnLibEvent* onLibEvent;
 Teardown* teardown;
 
 inline void* valloc(size_t size) {
@@ -1008,12 +1006,14 @@ void FormatCode() {
     formatTimeMs = round(f32(GetPerfCounter() - formatStart) * 1000.0f / (f32)GetPerfFrequency());
   }
 }
+
 void FreeLib() {
   if (libModule) {
     if (teardown) {
       teardown();
     }
     render = nullptr;
+    onLibEvent = nullptr;
     teardown = nullptr;
     FreeLibrary(libModule);
   }
@@ -1028,6 +1028,7 @@ void LoadLib() {
     if (libModule) {
       render = (Render*)GetProcAddress(libModule, "GetSome");
       teardown = (Teardown*)GetProcAddress(libModule, "Teardown");
+      onLibEvent = (OnLibEvent*)GetProcAddress(libModule, "OnLibEvent");
     }
   } else {
     isFailedToBuild = true;
@@ -1044,7 +1045,6 @@ void RunCode(const char* path) {
   RunCommand(strBuffer, buildLogs, &buildLogsLen);
 
   buildTimeMs = round(f32(GetPerfCounter() - buildStart) * 1000.0f / (f32)GetPerfFrequency());
-  RunCommand((char*)"build\\main.exe", 0, 0);
 }
 
 void MoveDown() {
@@ -1575,6 +1575,8 @@ void HandleKeyPress() {
       RunCommand((char*)"cmd /c ctags *", 0, 0);
       ReadCtagsFile();
       mode = OutlineInput;
+      patternLen = 0;
+      selectedOutlineItem = 0;
     }
     if (IsCommand("v")) {
       mode = Visual;
@@ -1588,12 +1590,22 @@ void HandleKeyPress() {
 
     if (IsAltCommand('r')) {
       RunCode("build.bat");
+      RunCommand((char*)"build\\main.exe", 0, 0);
+    }
+    if (IsAltCommand('e')) {
+      if (render)
+        mode = Execution;
+    }
+    if (IsCtrlCommand('e')) {
+      FreeLib();
     }
     if (IsAltCommand('t')) {
       FreeLib();
       Sleep(12);
       RunCode("lib.bat");
       LoadLib();
+      if (!isFailedToBuild)
+        mode = Execution;
     }
     if (IsAltCommand('f')) {
       FormatCode();
@@ -1853,6 +1865,14 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
     break;
   case WM_KEYDOWN:
   case WM_SYSKEYDOWN: {
+    if (mode == Execution) {
+      if (onLibEvent)
+        onLibEvent(handle, message, wParam, lParam);
+
+      InvalidateRect(win, 0, false);
+      return 0;
+    }
+
     if (wParam == VK_SHIFT || wParam == VK_CONTROL ||
         (IsKeyPressed(VK_SHIFT) && !IsAsciiChar(wParam)))
       break;
@@ -1953,6 +1973,19 @@ void PrintFooter(f32 deltaMs) {
   Append("Frame: ");
   Append(i32(deltaMs));
   Append("ms ");
+
+  Append(" ");
+  Append("Pos: ");
+  Append(pos);
+  Append(" ");
+
+  CursorPos cursor = GetCursorPos(pos);
+  Append("Col: ");
+  Append(cursor.col);
+  Append(" ");
+  Append("Row: ");
+  Append(cursor.row);
+  Append(" ");
 
   if (buildTimeMs != 0) {
     if (isFailedToBuild)
@@ -2097,6 +2130,11 @@ void RenderOutline(HDC dc, Rect rect) {
 void Draw(f32 deltaSec) {
   memset(canvas.pixels, 0x00, canvas.width * canvas.height * 4);
 
+  Rect r = {canvas.width / 2, 0, canvas.width / 2, canvas.height};
+  if (!render && !isFailedToBuild) {
+    r.x = canvas.width;
+  }
+
   f32 pageHeight = GetLinesCount() * m.tmHeight * lineHeight + padding * 2;
   if (pageHeight > canvas.height) {
     i32 scrollHeight = f32(canvas.height * canvas.height) / f32(pageHeight);
@@ -2106,10 +2144,8 @@ void Draw(f32 deltaSec) {
     f32 scrollY = lerp(0, maxScrollY, offset.current / maxOffset);
 
     i32 scrollWidth = 10;
-    PaintRect(canvas.width - scrollWidth, scrollY, scrollWidth, scrollHeight, 0x555555);
+    PaintRect(r.x - scrollWidth, scrollY, scrollWidth, scrollHeight, 0x555555);
   }
-
-  TextColors(0xd0d0d0, 0x000000);
 
   i32 x = padding;
   f32 y = padding - offset.current;
@@ -2117,9 +2153,11 @@ void Draw(f32 deltaSec) {
   SIZE s;
   const char* ch = "w";
   GetTextExtentPoint32A(dc, ch, 1, &s);
+  TextColors(0xd0d0d0, 0x000000);
 
   i32 i = 0;
   while (i < size) {
+
     i32 lineStart = i;
     while (content[i] != '\n' && i < size)
       i++;
@@ -2160,6 +2198,8 @@ void Draw(f32 deltaSec) {
     cursorbg = 0xFF3269;
   if (mode == Visual || mode == VisualLine)
     cursorbg = 0xF0EBE6;
+  if (mode == Execution)
+    cursorbg = 0xff2222;
   TextColors(0x000000, cursorbg);
   i32 cursorX = x + p.col * s.cx;
   i32 cursorY = padding + p.row * m.tmHeight * lineHeight - offset.current;
@@ -2173,14 +2213,10 @@ void Draw(f32 deltaSec) {
 
   PrintFooter(deltaSec * 1000.0f);
 
-  Rect r = {canvas.width / 2, 0, canvas.width / 2, canvas.height};
   if (render) {
     render(dc, &canvas, r, deltaSec);
   } else if (isFailedToBuild) {
     DrawParagraph(r.x, r.y, buildLogs, buildLogsLen);
-  }
-  if (!render) {
-    r.x = canvas.width;
   }
   RenderOutline(dc, r);
 
