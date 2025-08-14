@@ -129,12 +129,14 @@ void PaintSquareCentered(MyBitmap* bitmap, i32 x, i32 y, i32 size, u32 color) {
   PaintRect(bitmap, x - size / 2, y - size / 2, size, size, color);
 }
 
+// String pointers are not stable
 typedef struct String {
   int len;
   int capacity;
   char content[];
 } String;
 
+// Item pointers are stable
 typedef struct Item {
   String* str;
   struct Item* children[200];
@@ -157,8 +159,16 @@ typedef struct StackEntry {
   Item* item;
 } StackEntry;
 
-void AddChildTo(Item* parent, Item* child) {
-  parent->children[parent->childrenLen++] = child;
+void AddChildTo(Item* parent, Item* child, i32 at) {
+  if (at == -1)
+    parent->children[parent->childrenLen++] = child;
+  else {
+    for (i32 i = parent->childrenLen; i > at; i--) {
+      parent->children[i] = parent->children[i - 1];
+    }
+    parent->children[at] = child;
+    parent->childrenLen++;
+  }
   child->parent = parent;
 }
 
@@ -168,7 +178,7 @@ i32 Max(i32 a, i32 b) {
   return b;
 }
 
-Item* CreateItemLen(Item* parent, const char* text, i32 len) {
+Item* CreateItemLen(Item* parent, const char* text, i32 len, i32 at) {
   if (!nextStr)
     nextStr = (String*)(stringsArena.start + stringsArena.size);
 
@@ -182,14 +192,14 @@ Item* CreateItemLen(Item* parent, const char* text, i32 len) {
   nextStr = (String*)(stringsArena.start + stringsArena.size);
 
   Item* res = &items[itemsLen];
-  AddChildTo(parent, res);
+  AddChildTo(parent, res, at);
 
   itemsLen++;
   return res;
 }
 
 Item* CreateItem(Item* parent, const char* text) {
-  return CreateItemLen(parent, text, strlen(text));
+  return CreateItemLen(parent, text, strlen(text), -1);
 }
 
 i32 GetChildCount(Item* item) {
@@ -232,7 +242,7 @@ void Init() {
       while (stack[stackLen - 1].level >= offset)
         stackLen--;
 
-      Item* item = CreateItemLen(stack[stackLen - 1].item, file + start, pos - start);
+      Item* item = CreateItemLen(stack[stackLen - 1].item, file + start, pos - start, -1);
       stack[stackLen].level = offset;
       stack[stackLen++].item = item;
     }
@@ -270,32 +280,6 @@ void PrintNumber(HDC dc, i32 v, i32 x, i32 y, u32 color) {
   i32 len = FormatNumber(buff, v);
   TextColors(dc, color, 0);
   TextOut(dc, x - len * s.cx, y, buff, len);
-}
-
-void DrawItem(Item* child, MyBitmap* bitmap, HDC dc, int x, int y) {
-  u32 squareColor = 0x777777;
-  if (child == selectedItem) {
-    if (mode == Normal)
-      TextColors(dc, 0x99ff99, 0);
-    else
-      TextColors(dc, 0xff9999, 0);
-
-    squareColor = 0x77aa77;
-  } else
-    TextColors(dc, 0xffffff, 0);
-
-  i32 squareSize = 6;
-  if (child->isClosed)
-    PaintSquareCentered(bitmap, x, y + m.tmHeight / 2 + 2, squareSize, squareColor);
-  else if (child->childrenLen > 0) {
-    PaintRect(bitmap, x + 12 + s.cx / 2 - 1, y + m.tmHeight, 2,
-              m.tmHeight * 1.1 * GetChildCount(child), 0x191919);
-  }
-
-  TextOut(dc, x + 12, y, child->str->content, child->str->len);
-  PrintNumber(dc, (char*)child->str - stringsArena.start, bitmap->width - 5, y, 0x777777);
-  if (mode == Insert && child == selectedItem)
-    PaintRect(bitmap, x + 12 + s.cx * pos - 1, y, 2, m.tmHeight * 1.1, 0xffaaaa);
 }
 
 void AddChildrenToStack(StackEntry* stack, i32* stackLen, Item* parent, i32 level) {
@@ -402,6 +386,52 @@ void InsertCharInto(String* str, i32 pos, char ch) {
   str->len++;
 }
 
+void EnterInsertMode() {
+  mode = Insert;
+  pos = 0;
+}
+void AddItemAfter(Item* item) {
+  selectedItem = CreateItemLen(item->parent, "", 0, IndexOf(selectedItem) + 1);
+  EnterInsertMode();
+}
+
+void AddItemBefore(Item* item) {
+  selectedItem = CreateItemLen(item->parent, "", 0, IndexOf(selectedItem));
+  EnterInsertMode();
+}
+
+void AddItemInside(Item* item) {
+  selectedItem = CreateItemLen(item, "", 0, 0);
+  item->isClosed = 0;
+  EnterInsertMode();
+}
+
+void DrawItem(Item* child, MyBitmap* bitmap, HDC dc, int x, int y) {
+  u32 squareColor = 0x555555;
+  if (child == selectedItem) {
+    if (mode == Normal)
+      TextColors(dc, 0x99ff99, 0);
+    else
+      TextColors(dc, 0xff9999, 0);
+
+    squareColor = 0x77aa77;
+  } else
+    TextColors(dc, 0xffffff, 0);
+
+  i32 squareSize = 6;
+  if (child->isClosed)
+    PaintSquareCentered(bitmap, x - s.cx * 1.5, y + m.tmHeight / 2 + 2, squareSize, squareColor);
+  else if (child->childrenLen > 0) {
+    PaintRect(bitmap, x + s.cx / 2 - 1, y + m.tmHeight, 2, m.tmHeight * 1.1 * GetChildCount(child),
+              0x191919);
+  }
+
+  TextOut(dc, x, y, child->str->content, child->str->len);
+  PrintNumber(dc, (char*)child->str - stringsArena.start, bitmap->width - 5, y, 0x777777);
+  if (mode == Insert && child == selectedItem)
+    PaintRect(bitmap, x + s.cx * pos - 1, y, 2, m.tmHeight * 1.1, 0xffaaaa);
+}
+
 __declspec(dllexport) LRESULT OnLibEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
   if (message == WM_KEYDOWN) {
     if (mode == Normal) {
@@ -413,8 +443,16 @@ __declspec(dllexport) LRESULT OnLibEvent(HWND handle, UINT message, WPARAM wPara
         MoveLeft();
       if (wParam == 'L')
         MoveRight();
-      if (wParam == 'I')
-        mode = Insert;
+      if (wParam == 'I') {
+        EnterInsertMode();
+      }
+      if (wParam == 'O' && IsKeyPressed(VK_SHIFT))
+        AddItemBefore(selectedItem);
+      else if (wParam == 'O' && IsKeyPressed(VK_CONTROL))
+        AddItemInside(selectedItem);
+      else if (wParam == 'O')
+        AddItemAfter(selectedItem);
+
     } else if (mode == Insert) {
 
       if (wParam == VK_ESCAPE || (wParam == 'I' && IsKeyPressed(VK_CONTROL)))
@@ -444,7 +482,7 @@ __declspec(dllexport) void GetSome(HDC dc, MyBitmap* bitmap, Rect rect, float d)
   GetTextExtentPoint32A(dc, "w", 1, &s);
 
   i32 step = s.cx * 2;
-  i32 x = rect.x + step / 2;
+  i32 x = rect.x + step;
   f32 y = rect.y;
   f32 lineHeightPx = (f32)m.tmHeight * 1.1;
 
