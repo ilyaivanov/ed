@@ -136,8 +136,10 @@ void PaintSquareCentered(MyBitmap* bitmap, i32 x, i32 y, i32 size, u32 color) {
 // String pointers are not stable
 typedef struct String {
   int isAlive;
-  int len;
   int capacity;
+
+  int textLen;
+  int childrenLen;
   char content[];
 } String;
 
@@ -146,12 +148,13 @@ typedef struct Item {
   int isAlive;
   String* str;
   struct Item* children[WEIRD_NUMBER];
-  int childrenLen;
+  i32 childrenLen;
   struct Item* parent;
   int isClosed;
 } Item;
 
 struct Arena stringsArena;
+struct Arena childrenArena;
 String* nextStr;
 struct Arena itemsArena;
 
@@ -164,25 +167,6 @@ typedef struct StackEntry {
   Item* item;
 } StackEntry;
 
-void AddChildTo(Item* parent, Item* child, i32 at) {
-  if (at == -1)
-    parent->children[parent->childrenLen++] = child;
-  else {
-    for (i32 i = parent->childrenLen; i > at; i--) {
-      parent->children[i] = parent->children[i - 1];
-    }
-    parent->children[at] = child;
-    parent->childrenLen++;
-  }
-  child->parent = parent;
-}
-
-i32 Max(i32 a, i32 b) {
-  if (a > b)
-    return a;
-  return b;
-}
-
 void MoveAllStringsRightBy(Item* item, char* from, i32 by) {
   if (item->str && (char*)item->str > from)
     item->str = (String*)((char*)item->str + by);
@@ -190,6 +174,25 @@ void MoveAllStringsRightBy(Item* item, char* from, i32 by) {
   for (i32 i = 0; i < item->childrenLen; i++) {
     MoveAllStringsRightBy(item->children[i], from, by);
   }
+}
+
+void AddChildTo(Item* parent, Item* child, i32 at) {
+  if (at == -1)
+    parent->children[parent->childrenLen] = child;
+  else {
+    for (i32 i = parent->childrenLen; i > at; i--) {
+      parent->children[i] = parent->children[i - 1];
+    }
+    parent->children[at] = child;
+  }
+  parent->childrenLen++;
+  child->parent = parent;
+}
+
+i32 Max(i32 a, i32 b) {
+  if (a > b)
+    return a;
+  return b;
 }
 
 String* FindFreeString() {
@@ -232,10 +235,10 @@ Item* FindFreeItem() {
 Item* CreateItemLen(Item* parent, const char* text, i32 len, i32 at) {
   nextStr = FindFreeString();
 
-  nextStr->len = len;
+  nextStr->textLen = len;
   nextStr->capacity = Max(16, len * 2);
   nextStr->isAlive = 1;
-  memcpy(&nextStr->content, text, nextStr->len);
+  memcpy(&nextStr->content, text, nextStr->textLen);
 
   Item* res = FindFreeItem();
   res->str = nextStr;
@@ -252,7 +255,7 @@ Item* CreateItemLen(Item* parent, const char* text, i32 len, i32 at) {
 Item* CreateEmptyItem(Item* parent, i32 at) {
   nextStr = FindFreeString();
 
-  nextStr->len = 0;
+  nextStr->textLen = 0;
   nextStr->isAlive = 1;
 
   Item* res = FindFreeItem();
@@ -285,11 +288,14 @@ i32 GetChildCount(Item* item) {
 int hasInit;
 void Init() {
   root.isAlive = 1;
-  stringsArena.capacity = KB(100);
+  stringsArena.capacity = KB(1000);
   stringsArena.start = (char*)valloc(stringsArena.capacity);
 
-  itemsArena.capacity = KB(100);
+  itemsArena.capacity = KB(1000);
   itemsArena.start = (char*)valloc(itemsArena.capacity);
+
+  childrenArena.capacity = KB(1000);
+  childrenArena.start = (char*)valloc(childrenArena.capacity);
 
   const char* path = "notes.txt";
   i32 size = GetMyFileSize(path);
@@ -397,7 +403,9 @@ void SwapRight() {
   i32 index = IndexOf(selectedItem);
   if (index > 0) {
     RemoveItemFromParent(selectedItem);
-    AddChildTo(selectedItem->parent->children[index - 1], selectedItem, -1);
+    Item* prev = selectedItem->parent->children[index - 1];
+    AddChildTo(prev, selectedItem, -1);
+    prev->isClosed = 0;
   }
 }
 
@@ -427,6 +435,18 @@ void MoveDown() {
         selectedItem = NextSibling(parent);
     }
   }
+}
+
+void MoveToNextSibling() {
+  i32 index = IndexOf(selectedItem);
+  if (index < (selectedItem->parent->childrenLen - 1))
+    selectedItem = selectedItem->parent->children[index + 1];
+}
+
+void MoveToPrevSibling() {
+  i32 index = IndexOf(selectedItem);
+  if (index > 0)
+    selectedItem = selectedItem->parent->children[index - 1];
 }
 
 void MoveUp() {
@@ -459,9 +479,9 @@ void MoveRight() {
 }
 
 void InsertCharInto(String* str, i32 pos, char ch) {
-  if (str->len == str->capacity) {
+  if (str->textLen == str->capacity) {
     str->capacity *= 2;
-    i32 diff = str->capacity - str->len;
+    i32 diff = str->capacity - str->textLen;
     i32 start = (char*)str - stringsArena.start;
     for (i32 i = stringsArena.size - 1; i >= start + diff; i--) {
       stringsArena.start[i + diff] = stringsArena.start[i];
@@ -470,11 +490,11 @@ void InsertCharInto(String* str, i32 pos, char ch) {
     MoveAllStringsRightBy(&root, (char*)str, diff);
   }
 
-  for (i32 i = str->len; i > pos; i--) {
+  for (i32 i = str->textLen; i > pos; i--) {
     str->content[i] = str->content[i - 1];
   }
   str->content[pos] = ch;
-  str->len++;
+  str->textLen++;
 }
 
 void EnterInsertMode() {
@@ -531,7 +551,7 @@ void DrawItem(Item* child, MyBitmap* bitmap, HDC dc, int x, int y) {
               0x191919);
   }
 
-  TextOut(dc, x, y, child->str->content, child->str->len);
+  TextOut(dc, x, y, child->str->content, child->str->textLen);
   PrintNumber(dc, (char*)child->str - stringsArena.start, bitmap->width - 150, y, 0x777777);
   PrintNumber(dc, (char*)child - (char*)itemsArena.start, bitmap->width - 5, y, 0x777777);
   if (mode == Insert && child == selectedItem)
@@ -544,12 +564,16 @@ __declspec(dllexport) LRESULT OnLibEvent(HWND handle, UINT message, WPARAM wPara
       if (wParam == 'J') {
         if (IsKeyPressed(VK_MENU))
           SwapBelow();
+        else if (IsKeyPressed(VK_CONTROL))
+          MoveToNextSibling();
         else
           MoveDown();
       }
       if (wParam == 'K') {
         if (IsKeyPressed(VK_MENU))
           SwapAbove();
+        else if (IsKeyPressed(VK_CONTROL))
+          MoveToPrevSibling();
         else
           MoveUp();
       }
