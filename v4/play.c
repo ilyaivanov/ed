@@ -274,12 +274,15 @@ Item* CreateItem(Item* parent, const char* text) {
   return CreateItemLen(parent, text, strlen(text), -1);
 }
 
-i32 GetChildCount(Item* item) {
+i32 GetVisibleChildCount(Item* item) {
+  if (item->isClosed)
+    return 0;
+    
   i32 res = item->childrenLen;
 
   for (i32 i = 0; i < item->childrenLen; i++) {
     if (item->children[i]->childrenLen > 0)
-      res += GetChildCount(item->children[i]);
+      res += GetVisibleChildCount(item->children[i]);
   }
 
   return res;
@@ -547,8 +550,8 @@ void DrawItem(Item* child, MyBitmap* bitmap, HDC dc, int x, int y) {
   if (child->isClosed)
     PaintSquareCentered(bitmap, x - s.cx * 1.5, y + m.tmHeight / 2 + 2, squareSize, squareColor);
   else if (child->childrenLen > 0) {
-    PaintRect(bitmap, x + s.cx / 2 - 1, y + m.tmHeight, 2, m.tmHeight * 1.1 * GetChildCount(child),
-              0x191919);
+    PaintRect(bitmap, x + s.cx / 2 - 1, y + m.tmHeight, 2,
+              m.tmHeight * 1.1 * GetVisibleChildCount(child), 0x191919);
   }
 
   TextOut(dc, x, y, child->str->content, child->str->textLen);
