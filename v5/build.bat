@@ -13,7 +13,7 @@ set conf=-g
 
 if not exist build mkdir build
 
-clang main.c %linker% %conf% -o build\main.exe %libs%
+clang -Wall -Wextra main.cpp %linker% %conf% -o build\main.exe %libs%
 
 
 @REM -Wall -Wextra

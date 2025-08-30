@@ -1,4 +1,4 @@
-#include "win32.c"
+#include "win32.cpp"
 #include <malloc.h>
 
 i32 isRunning = 1;
@@ -8,7 +8,8 @@ i32 isInitialized = 0;
 BITMAPINFO bitmapInfo;
 HWND win;
 HDC canvasDc;
-HDC windowDC;
+HDC windowDc;
+HFONT font;
 
 HBITMAP canvasBitmap;
 
@@ -28,12 +29,32 @@ void Size(LPARAM lParam) {
   SelectObject(canvasDc, canvasBitmap);
 }
 
+HFONT CreateFontf(i32 fontSize, const char* name, i32 weight, i32 quiality) {
+  int h = -MulDiv(fontSize, GetDeviceCaps(canvasDc, LOGPIXELSY), USER_DEFAULT_SCREEN_DPI);
+  return CreateFontA(h, 0, 0, 0,
+                     // FW_BOLD,
+                     weight,
+                     0, // Italic
+                     0, // Underline
+                     0, // Strikeout
+                     DEFAULT_CHARSET, OUT_TT_ONLY_PRECIS, CLIP_DEFAULT_PRECIS, quiality,
+                     DEFAULT_PITCH, name);
+}
+
 void Draw() {
   memset(canvas.pixels, 0, canvas.width * canvas.height * 4);
 
-  PaintRect(&canvas, canvas.width / 2 - 200 / 2, 20, 200, 200, 0xffffff);
+  u32 b = 0x000000;
+  u32 f = 0xffffff;
+  SetBkColor(canvasDc, ToWinColor(b));
+  SetTextColor(canvasDc, ToWinColor(f));
 
-  StretchDIBits(windowDC, 0, 0, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height,
+  const char* str = "public static void main(char* args)";
+
+  SelectObject(canvasDc, font);
+  TextOutA(canvasDc, 20, 20, str, strlen(str));
+
+  StretchDIBits(windowDc, 0, 0, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height,
                 canvas.pixels, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
 }
 
@@ -51,7 +72,7 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
     break;
   case WM_PAINT: {
     PAINTSTRUCT ps;
-    HDC hdc = BeginPaint(handle, &ps);
+    BeginPaint(handle, &ps);
     EndPaint(handle, &ps);
   } break;
   case WM_SIZE:
@@ -63,15 +84,17 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
   return DefWindowProc(handle, message, wParam, lParam);
 }
 
-int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd) {
-  //;void WinMainCRTStartup() {
+int WinMain([[maybe_unused]] HINSTANCE hInstance, [[maybe_unused]] HINSTANCE hPrevInstance,
+            [[maybe_unused]] LPSTR lpCmdLine, [[maybe_unused]] int nShowCmd) {
   
-  PreventWindowsDPIScaling();
+  SetProcessDPIAware();
+  
   canvasDc = CreateCompatibleDC(0);
   win = OpenWindow(OnEvent);
-  windowDC = GetDC(win);
+  windowDc = GetDC(win);
 
-  char* foo = (char*)malloc(42);
+  i32 size = 15;
+  font = CreateFontf(size, "Consolas", FW_REGULAR, CLEARTYPE_NATURAL_QUALITY);
 
   isInitialized = 1;
   while (isRunning) {

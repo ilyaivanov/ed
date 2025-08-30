@@ -1,7 +1,7 @@
 #pragma once
 #define WIN32_LEAN_AND_MEAN
-#include <stdint.h>
 #include <dwmapi.h>
+#include <stdint.h>
 #include <windows.h>
 
 int _fltused = 0x9875;
@@ -106,7 +106,7 @@ typedef LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM 
 
 HWND OpenWindow(WindowProc* proc) {
   HINSTANCE instance = GetModuleHandle(0);
-  WNDCLASSA windowClass = {0};
+  WNDCLASSA windowClass = {};
   windowClass.hInstance = instance;
   windowClass.lpfnWndProc = proc;
   windowClass.lpszClassName = "MyClassName";
@@ -119,7 +119,7 @@ HWND OpenWindow(WindowProc* proc) {
   HDC screenDc = GetDC(0);
 
   int screenWidth = GetDeviceCaps(screenDc, HORZRES);
-  int screenHeight = GetDeviceCaps(screenDc, VERTRES);
+  //  int screenHeight = GetDeviceCaps(screenDc, VERTRES);
 
   int width = 1800;
   int height = 1000;
@@ -133,23 +133,6 @@ HWND OpenWindow(WindowProc* proc) {
   SUCCEEDED(DwmSetWindowAttribute(win, DWMWA_USE_IMMERSIVE_DARK_MODE, &USE_DARK_MODE,
                                   sizeof(USE_DARK_MODE)));
   return win;
-}
-
-typedef BOOL WINAPI set_process_dpi_aware(void);
-typedef BOOL WINAPI set_process_dpi_awareness_context(DPI_AWARENESS_CONTEXT);
-static void PreventWindowsDPIScaling() {
-  HMODULE WinUser = LoadLibraryW(L"user32.dll");
-  set_process_dpi_awareness_context* SetProcessDPIAwarenessContext =
-      (set_process_dpi_awareness_context*)GetProcAddress(WinUser, "SetProcessDPIAwarenessContext");
-  if (SetProcessDPIAwarenessContext) {
-    SetProcessDPIAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
-  } else {
-    set_process_dpi_aware* SetProcessDPIAware =
-        (set_process_dpi_aware*)GetProcAddress(WinUser, "SetProcessDPIAware");
-    if (SetProcessDPIAware) {
-      SetProcessDPIAware();
-    }
-  }
 }
 
 //
