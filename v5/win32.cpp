@@ -136,6 +136,27 @@ HWND OpenWindow(WindowProc* proc) {
 }
 
 //
+// Math
+//
+
+i32 roundff(f32 v) {
+  return (i32)(v + 0.5f);
+}
+
+i32 Max(i32 a, i32 b) {
+  if (a > b)
+    return a;
+  else
+    return b;
+}
+i32 Min(i32 a, i32 b) {
+  if (a < b)
+    return a;
+  else
+    return b;
+}
+
+//
 // Painting
 //
 
@@ -162,22 +183,6 @@ typedef struct MyBitmap {
   u32* pixels;
 } MyBitmap;
 
-i32 roundff(f32 v) {
-  return (i32)(v + 0.5f);
-}
-
-i32 Max(i32 a, i32 b) {
-  if (a > b)
-    return a;
-  else
-    return b;
-}
-i32 Min(i32 a, i32 b) {
-  if (a < b)
-    return a;
-  else
-    return b;
-}
 
 void PaintRect(MyBitmap* canvas, f32 x, f32 y, f32 width, f32 height, u32 color) {
   int startX = roundff(x);
@@ -197,3 +202,8 @@ void PaintRect(MyBitmap* canvas, f32 x, f32 y, f32 width, f32 height, u32 color)
     }
   }
 }
+
+void PaintSquareCentered(MyBitmap* canvas, f32 x, f32 y, f32 size, u32 color) {
+  PaintRect(canvas, x - size / 2.0f, y - size / 2.0f, size, size, color);
+}
+
