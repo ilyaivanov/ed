@@ -1,0 +1,3 @@
+Starting to work on a v5 (this time I will get it done, right?)
+Repeat same functionality (without undo/redo) but with nested items (collapse, show) 
+and minimal-readonly files system support
