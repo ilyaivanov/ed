@@ -223,6 +223,24 @@ bool IsPrintable(char ch) {
   return ch >= ' ' && ch <= '}';
 }
 
+i32 StrLen(const wchar_t* str) {
+  i32 len = 0;
+  while (str[len] != L'\0')
+    len++;
+
+  return len;
+}
+
+i32 Appendw(c16* buff, i32 len, const c16* str) {
+  i32 i = 0;
+  while (str[i] != 0) {
+    buff[len] = str[i];
+    len++;
+    i++;
+  }
+
+  return len;
+}
 
 //
 // Painting

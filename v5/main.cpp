@@ -14,7 +14,12 @@ u32 selectionBgColorInsert = 0x201111;
 u32 selectionColorInsert = 0xffffff;
 u32 cursorColorInsert = 0xff2222;
 
+u32 headerBg = 0x151515;
+u32 headerText = 0xaaaaaa;
+
 f32 vPadding = 20;
+
+f32 headerTextPadding = 5;
 
 i32 isRunning = 1;
 
@@ -100,7 +105,38 @@ void CenterViewOnItem() {
   offset = GetItemOffsetFromTop(selectedItem) - (f32)canvas.height / 2.0f;
 }
 
+Item* FindFile(Item* item) {
+  while (!IsRoot(item) && item->fileAttrs == 0)
+    item = item->parent;
+  return IsRoot(item) ? 0 : item;
+}
+
+void MarkFileAsSaved(u32 isSaved) {
+  Item* file = FindFile(selectedItem);
+  if (file)
+    file->isFileModified = !isSaved;
+}
+
+void DrawHeader() {
+  f32 headerHeight = m.tmHeight + headerTextPadding * 2;
+
+  TextColor(headerText);
+  BgColor(headerBg);
+
+  wchar_t path[MAX_PATH] = {};
+  Item* file = FindFile(selectedItem);
+  i32 len = FillItemPath(path, file, rootPath);
+
+  if (file->isFileModified)
+    path[len++] = L'*';
+
+  PaintRect(&canvas, 0, 0, canvas.width, headerHeight, headerBg);
+  TextOutW(canvasDc, headerTextPadding, headerTextPadding, path, len);
+}
+
 void Draw() {
+  f32 headerHeight = m.tmHeight + headerTextPadding * 2;
+
   memset(canvas.pixels, 0, canvas.width * canvas.height * 4);
 
   StackEntry* stack = (StackEntry*)malloc(400 * sizeof(StackEntry));
@@ -116,7 +152,7 @@ void Draw() {
   f32 lineHeightPx = m.tmHeight * lineHeight;
   f32 textOffsetY = (lineHeightPx - m.tmHeight) / 2.0f;
   f32 hPadding = s.cx * 3;
-  f32 y = -offset + vPadding;
+  f32 y = -offset + headerHeight;
 
   while (stackLen > 0) {
     StackEntry entry = stack[--stackLen];
@@ -187,40 +223,10 @@ void Draw() {
     PaintRect(&canvas, canvas.width - scrollWidth, scrollY, scrollWidth, scrollHeight, 0x555555);
   }
 
+  DrawHeader();
+
   StretchDIBits(windowDc, 0, 0, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height,
                 canvas.pixels, &bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
-}
-
-i32 Appendw(c16* buff, i32 len, const c16* str) {
-  i32 i = 0;
-  while (str[i] != 0) {
-    buff[len] = str[i];
-    len++;
-    i++;
-  }
-
-  return len;
-}
-
-i32 FillItemPath(c16* buff, Item* item) {
-  Item* path[20] = {0};
-  i32 pathLen = 0;
-
-  Item* current = item;
-
-  while (!IsRoot(current)) {
-    path[pathLen++] = current;
-    current = current->parent;
-  }
-
-  i32 len = 0;
-  len = Appendw(buff, len, rootPath);
-  for (i32 i = pathLen - 1; i >= 0; i--) {
-    len = Appendw(buff, len, L"\\");
-    len = Appendw(buff, len, path[i]->text);
-  }
-
-  return len;
 }
 
 int IsFileFiltered(WIN32_FIND_DATAW data) {
@@ -251,14 +257,13 @@ void TryAddItem(WIN32_FIND_DATAW data, Item* parent) {
 
 void LoadFolder(Item* item) {
   c16 path[MAX_PATH] = {0};
-  i32 len = FillItemPath(path, item);
+  i32 len = FillItemPath(path, item, rootPath);
 
   if (IsFolder(item) || IsRoot(item)) {
     len = Appendw(path, len, L"\\*");
     WIN32_FIND_DATAW data;
     HANDLE file = FindFirstFileW(path, &data);
     if (file) {
-
       TryAddItem(data, item);
 
       while (FindNextFileW(file, &data)) {
@@ -381,6 +386,7 @@ void RemoveCharFromLeft() {
   if (cursorPos > 0) {
     RemoveChars(selectedItem, cursorPos - 1, cursorPos - 1);
     cursorPos -= 1;
+    MarkFileAsSaved(0);
   }
 }
 
@@ -413,6 +419,7 @@ void CreateItemBefore() {
   Item* child = (Item*)calloc(1, sizeof(Item));
   AddChildAt(selectedItem->parent, child, IndexOf(selectedItem));
   selectedItem = child;
+  MarkFileAsSaved(0);
   cursorPos = 0;
   mode = Insert;
 }
@@ -420,6 +427,22 @@ void CreateItemBefore() {
 void CreateItemAfter() {
   Item* child = (Item*)calloc(1, sizeof(Item));
   AddChildAt(selectedItem->parent, child, IndexOf(selectedItem) + 1);
+  MarkFileAsSaved(0);
+  selectedItem = child;
+  cursorPos = 0;
+  mode = Insert;
+}
+
+void CreateItemInside() {
+  Item* child = (Item*)calloc(1, sizeof(Item));
+  if (selectedItem->childrenLen == 0 && selectedItem->fileAttrs != 0)
+    LoadFolder(selectedItem);
+
+  if (selectedItem->isClosed)
+    selectedItem->isClosed = 0;
+
+  AddChildAt(selectedItem, child, 0);
+  MarkFileAsSaved(0);
   selectedItem = child;
   cursorPos = 0;
   mode = Insert;
@@ -437,6 +460,7 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
     if (mode == Insert) {
       InsertCharAtCursor(selectedItem, cursorPos, wParam);
       cursorPos++;
+      MarkFileAsSaved(0);
     }
 
     break;
@@ -463,11 +487,10 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
       if (wParam == 'B')
         UpdateCursorPos(JumpWordBackward(selectedItem, cursorPos));
 
-      if (wParam == 'O' && IsKeyPressed(VK_CONTROL))
-        OpenAllSiblings();
-
-      if (wParam == 'Y' && IsKeyPressed(VK_CONTROL))
-        CloseAllSiblings();
+      if (wParam == 'G' && IsKeyPressed(VK_SHIFT))
+        UpdateSelection(root->children[0]);
+      else if (wParam == 'G')
+        UpdateSelection(root->children[0]);
 
       if (IsKeyPressed(VK_CONTROL)) {
         if (wParam == 'J')
@@ -495,10 +518,31 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
         RemoveCharFromLeft();
       if (wParam == 'X')
         RemoveCurrentChar();
+      if (wParam == 'D') {
+        i32 index = IndexOf(selectedItem);
+        Item* parent = selectedItem->parent;
+        Item* itemToRemove = selectedItem;
+        if (parent->childrenLen == 1)
+          UpdateSelection(parent);
+        else if (index < parent->childrenLen - 1)
+          UpdateSelection(GetNextSibling(selectedItem));
+        else
+          UpdateSelection(GetPrevSibling(selectedItem));
+
+        RemoveItem(itemToRemove);
+        MarkFileAsSaved(0);
+      }
 
       if (wParam == 'Z')
         CenterViewOnItem();
-      if (wParam == 'O' && IsKeyPressed(VK_SHIFT))
+        
+      if (wParam == 'O' && IsKeyPressed(VK_CONTROL))
+        OpenAllSiblings();
+      else if (wParam == 'Y' && IsKeyPressed(VK_CONTROL))
+        CloseAllSiblings();
+      else if (wParam == 'O' && IsKeyPressed(VK_CONTROL))
+        CreateItemInside();
+      else if (wParam == 'O' && IsKeyPressed(VK_SHIFT))
         CreateItemBefore();
       else if (wParam == 'O')
         CreateItemAfter();
@@ -542,7 +586,10 @@ int wWinMain([[maybe_unused]] HINSTANCE hInstance, [[maybe_unused]] HINSTANCE hP
 
   SetProcessDPIAware();
 
-  GetCurrentDirectoryW(MAX_PATH, (wchar_t*)&rootPath[0]);
+  // GetCurrentDirectoryW(MAX_PATH, (wchar_t*)&rootPath[0]);
+
+  const wchar_t* s = L"C:\\holy\\coditor";
+  memmove(rootPath, s, StrLen(s) * 2);
 
   canvasDc = CreateCompatibleDC(0);
 

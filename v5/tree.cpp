@@ -13,6 +13,7 @@ typedef struct Item {
   i32 childrenLen;
   i32 childrenCapacity;
   u32 fileAttrs;
+  i32 isFileModified;
 } Item;
 
 void DoubleTextCapacity(Item* item) {
@@ -20,7 +21,7 @@ void DoubleTextCapacity(Item* item) {
     item->textCapacity = 8;
   else
     item->textCapacity = item->textCapacity * 2;
-    
+
   item->text = (wchar_t*)realloc(item->text, item->textCapacity);
 }
 
@@ -71,17 +72,10 @@ typedef struct StackEntry {
   Item* item;
 } StackEntry;
 
-int IsSkipped(Item* item, i32 index) {
-  return index > 0 && item->parent->children[index - 1]->isClosed && item->text[0] == L'}';
-}
-
 void AddChildrenToStack(StackEntry* stack, i32* stackLen, Item* parent, i32 level) {
   for (i32 i = parent->childrenLen - 1; i >= 0; i--) {
-    Item* item = parent->children[i];
-    if (!IsSkipped(item, i)) {
-      stack[*stackLen] = (StackEntry){.level = level, .item = parent->children[i]};
-      *stackLen += 1;
-    }
+    stack[*stackLen] = (StackEntry){.level = level, .item = parent->children[i]};
+    *stackLen += 1;
   }
 }
 
@@ -115,6 +109,27 @@ int IsFolder(Item* item) {
   return item->fileAttrs & FILE_ATTRIBUTE_DIRECTORY;
 }
 
+i32 FillItemPath(c16* buff, Item* item, const c16* rootPath) {
+  Item* path[20] = {0};
+  i32 pathLen = 0;
+
+  Item* current = item;
+
+  while (!IsRoot(current)) {
+    path[pathLen++] = current;
+    current = current->parent;
+  }
+
+  i32 len = 0;
+  len = Appendw(buff, len, rootPath);
+  for (i32 i = pathLen - 1; i >= 0; i--) {
+    len = Appendw(buff, len, L"\\");
+    len = Appendw(buff, len, path[i]->text);
+  }
+
+  return len;
+}
+
 Item* GetItemBelow(Item* item) {
   Item* res = 0;
 
@@ -134,10 +149,15 @@ Item* GetItemBelow(Item* item) {
     }
   }
 
-  if (res && IsSkipped(res, IndexOf(res)))
-    res = GetItemBelow(res);
-
   return res;
+}
+
+Item* GetMostNestedItem(Item* item) {
+
+  while (!item->isClosed && item->childrenLen > 0)
+    item = GetLastChild(item);
+
+  return item;
 }
 
 Item* GetItemAbove(Item* item) {
@@ -145,18 +165,10 @@ Item* GetItemAbove(Item* item) {
   Item* res = 0;
 
   if (index > 0) {
-    Item* prev = item->parent->children[index - 1];
-    while (!prev->isClosed && prev->childrenLen > 0)
-      prev = GetLastChild(prev);
-
-    res = prev;
-
+    res = GetMostNestedItem(item->parent->children[index - 1]);
   } else if (!IsRoot(item->parent)) {
     res = item->parent;
   }
-
-  if (res && IsSkipped(res, IndexOf(res)))
-    res = GetItemAbove(res);
 
   return res;
 }
@@ -167,8 +179,6 @@ Item* GetNextSibling(Item* item) {
   Item* res = 0;
   if (index < parent->childrenLen - 1)
     res = parent->children[index + 1];
-  if (res && IsSkipped(res, IndexOf(res)))
-    res = GetNextSibling(res);
   return res;
 }
 
@@ -178,8 +188,6 @@ Item* GetPrevSibling(Item* item) {
   Item* res = 0;
   if (index > 0)
     res = parent->children[index - 1];
-  if (res && IsSkipped(res, IndexOf(res)))
-    res = GetPrevSibling(res);
   return res;
 }
 
@@ -191,8 +199,7 @@ i32 GetVisibleChildCount(Item* item) {
 
   for (i32 i = 0; i < item->childrenLen; i++) {
     Item* child = item->children[i];
-    if (!IsSkipped(child, i))
-      res++;
+    res++;
 
     res += GetVisibleChildCount(child);
   }
@@ -264,4 +271,30 @@ i32 JumpWordBackward(Item* item, i32 p) {
   }
 
   return p;
+}
+
+void RemoveItemFromParent(Item* item) {
+  Item* parent = item->parent;
+  i32 index = IndexOf(item);
+  for (i32 i = index; i < parent->childrenLen - 1; i++) {
+    parent->children[i] = parent->children[i + 1];
+  }
+  parent->childrenLen--;
+}
+
+void FreeItemAndSubitems(Item* item) {
+
+  for (i32 i = 0; i < item->childrenLen; i++) {
+    FreeItemAndSubitems(item->children[i]);
+  }
+  free(item->children);
+  free(item->text);
+  free(item);
+}
+
+void RemoveItem(Item* item) {
+  RemoveItemFromParent(item);
+  FreeItemAndSubitems(item);
+
+  //
 }
