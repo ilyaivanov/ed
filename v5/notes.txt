@@ -13,8 +13,11 @@ Day 1
   navigate around tree
   open\close nodes
 
-Day 2
+Day 2 (very little work was done)
   scroll into an item
 
 Day 3 
   autoscroll
+  move to siblings (via ctrl)
+  Starting to work on editing
+    w b iI aA oO

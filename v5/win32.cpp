@@ -1,5 +1,8 @@
 #pragma once
+#define UNICODE
+#define _UNICODE
 #define WIN32_LEAN_AND_MEAN
+
 #include <dwmapi.h>
 #include <stdint.h>
 #include <windows.h>
@@ -27,7 +30,6 @@ inline void* valloc(size_t size) {
 inline void vfree(void* ptr) {
   VirtualFree(ptr, 0, MEM_RELEASE);
 };
-
 
 int strequal(const char* a, const char* b) {
   while (*a && *b) {
@@ -107,15 +109,15 @@ typedef LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM 
 
 HWND OpenWindow(WindowProc* proc) {
   HINSTANCE instance = GetModuleHandle(0);
-  WNDCLASSA windowClass = {};
+  WNDCLASSW windowClass = {};
   windowClass.hInstance = instance;
   windowClass.lpfnWndProc = proc;
-  windowClass.lpszClassName = "MyClassName";
+  windowClass.lpszClassName = L"MyClassName";
   windowClass.style = CS_VREDRAW | CS_HREDRAW;
   windowClass.hCursor = LoadCursor(0, IDC_ARROW);
   windowClass.hbrBackground = CreateSolidBrush(0);
 
-  RegisterClassA(&windowClass);
+  RegisterClassW(&windowClass);
 
   HDC screenDc = GetDC(0);
 
@@ -124,9 +126,8 @@ HWND OpenWindow(WindowProc* proc) {
 
   int width = 1800;
   int height = 2050;
-  const char* title = "Hell v5";
 
-  HWND win = CreateWindowA(windowClass.lpszClassName, title, WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+  HWND win = CreateWindowW(windowClass.lpszClassName, L"Hello", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
                            screenWidth - width, 0, width, height, 0, 0, instance, 0);
 
   ShowWindow(win, SW_SHOW);
@@ -185,6 +186,45 @@ f32 lerp(f32 from, f32 to, f32 v) {
 }
 
 //
+// Text
+//
+
+u32 IsPunctuation(char ch) {
+  // use a lookup table
+  const char* punctuation = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
+
+  const char* p = punctuation;
+  while (*p) {
+    if (ch == *p) {
+      return 1;
+    }
+    p++;
+  }
+  return 0;
+}
+
+u32 IsWhitespace(char ch) {
+  return ch == ' ' || ch == '\n';
+}
+
+u32 IsNumeric(char ch) {
+  return (ch >= '0' && ch <= '9');
+}
+
+u32 IsAlphaNumeric(char ch) {
+  return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
+}
+
+u32 IsAsciiChar(char ch) {
+  return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
+}
+
+bool IsPrintable(char ch) {
+  return ch >= ' ' && ch <= '}';
+}
+
+
+//
 // Painting
 //
 
@@ -211,7 +251,6 @@ typedef struct MyBitmap {
   u32* pixels;
 } MyBitmap;
 
-
 void PaintRect(MyBitmap* canvas, f32 x, f32 y, f32 width, f32 height, u32 color) {
   int startX = roundff(x);
   int startY = roundff(y);
@@ -234,4 +273,3 @@ void PaintRect(MyBitmap* canvas, f32 x, f32 y, f32 width, f32 height, u32 color)
 void PaintSquareCentered(MyBitmap* canvas, f32 x, f32 y, f32 size, u32 color) {
   PaintRect(canvas, x - size / 2.0f, y - size / 2.0f, size, size, color);
 }
-

@@ -15,7 +15,17 @@ typedef struct Item {
   u32 fileAttrs;
 } Item;
 
-Item* AddChildAsText(Item* parent, const wchar_t* text, i32 at) {
+void DoubleTextCapacity(Item* item) {
+  if (item->textCapacity == 0)
+    item->textCapacity = 8;
+  else
+    item->textCapacity = item->textCapacity * 2;
+    
+  item->text = (wchar_t*)realloc(item->text, item->textCapacity);
+}
+
+void AddChildAt(Item* parent, Item* child, i32 at) {
+
   if (parent->childrenLen == parent->childrenCapacity) {
     parent->childrenCapacity = parent->childrenCapacity + 10;
     parent->children = (Item**)realloc(parent->children, parent->childrenCapacity * sizeof(Item*));
@@ -28,14 +38,21 @@ Item* AddChildAsText(Item* parent, const wchar_t* text, i32 at) {
     parent->children[i] = parent->children[i - 1];
   }
 
-  Item* child = (Item*)calloc(1, sizeof(Item));
   parent->children[at] = child;
   parent->childrenLen++;
+
+  child->parent = parent;
+}
+
+Item* AddChildAsText(Item* parent, const wchar_t* text, i32 at) {
+  Item* child = (Item*)calloc(1, sizeof(Item));
+
+  AddChildAt(parent, child, at);
+
   child->textLen = wcslen(text);
   child->textCapacity = (child->textLen + 1) * sizeof(wchar_t);
   child->text = (wchar_t*)calloc(child->textCapacity, 1);
   memcpy(child->text, text, child->textLen * sizeof(wchar_t));
-  child->parent = parent;
 
   return child;
 }
@@ -99,38 +116,71 @@ int IsFolder(Item* item) {
 }
 
 Item* GetItemBelow(Item* item) {
+  Item* res = 0;
+
   if (item->childrenLen > 0 && !item->isClosed)
-    return item->children[0];
+    res = item->children[0];
   else {
     int index = IndexOf(item);
     if (index < item->parent->childrenLen - 1)
-      return item->parent->children[index + 1];
+      res = item->parent->children[index + 1];
     else {
       Item* parent = item->parent;
       while (!IsRoot(parent) && IsLastItem(parent)) {
         parent = parent->parent;
       }
       if (!IsRoot(parent))
-        return NextSibling(parent);
+        res = NextSibling(parent);
     }
   }
-  return 0;
+
+  if (res && IsSkipped(res, IndexOf(res)))
+    res = GetItemBelow(res);
+
+  return res;
 }
 
 Item* GetItemAbove(Item* item) {
   int index = IndexOf(item);
+  Item* res = 0;
+
   if (index > 0) {
     Item* prev = item->parent->children[index - 1];
     while (!prev->isClosed && prev->childrenLen > 0)
       prev = GetLastChild(prev);
 
-    return prev;
+    res = prev;
 
   } else if (!IsRoot(item->parent)) {
-    return item->parent;
+    res = item->parent;
   }
 
-  return 0;
+  if (res && IsSkipped(res, IndexOf(res)))
+    res = GetItemAbove(res);
+
+  return res;
+}
+
+Item* GetNextSibling(Item* item) {
+  Item* parent = item->parent;
+  i32 index = IndexOf(item);
+  Item* res = 0;
+  if (index < parent->childrenLen - 1)
+    res = parent->children[index + 1];
+  if (res && IsSkipped(res, IndexOf(res)))
+    res = GetNextSibling(res);
+  return res;
+}
+
+Item* GetPrevSibling(Item* item) {
+  Item* parent = item->parent;
+  i32 index = IndexOf(item);
+  Item* res = 0;
+  if (index > 0)
+    res = parent->children[index - 1];
+  if (res && IsSkipped(res, IndexOf(res)))
+    res = GetPrevSibling(res);
+  return res;
 }
 
 i32 GetVisibleChildCount(Item* item) {
@@ -143,9 +193,75 @@ i32 GetVisibleChildCount(Item* item) {
     Item* child = item->children[i];
     if (!IsSkipped(child, i))
       res++;
-      
+
     res += GetVisibleChildCount(child);
   }
 
   return res;
+}
+
+void InsertCharAtCursor(Item* item, i32 pos, wchar_t ch) {
+  if (item->textLen * 2 == item->textCapacity)
+    DoubleTextCapacity(item);
+
+  for (i32 i = item->textLen; i > pos; i--) {
+    item->text[i] = item->text[i - 1];
+  }
+  item->text[pos] = ch;
+  item->textLen++;
+}
+
+void RemoveChars(Item* item, i32 from, i32 to) {
+  int num_to_shift = (item->textLen - (to + 1)) * 2;
+
+  memmove(item->text + from, item->text + to + 1, num_to_shift);
+
+  item->textLen -= (to - from + 1);
+}
+
+i32 JumpWordForward(Item* item, i32 p) {
+  wchar_t* text = item->text;
+  i32 size = item->textLen;
+  if (IsWhitespace(text[p])) {
+    while (p < size && IsWhitespace(text[p]))
+      p++;
+  } else {
+    if (IsAlphaNumeric(text[p])) {
+      while (p < size && IsAlphaNumeric(text[p]))
+        p++;
+    } else {
+      while (p < size && IsPunctuation(text[p]))
+        p++;
+    }
+    while (p < size && IsWhitespace(text[p]))
+      p++;
+  }
+  return p;
+}
+
+i32 JumpWordBackward(Item* item, i32 p) {
+  wchar_t* text = item->text;
+
+  p = Max(p - 1, 0);
+  i32 isStartedAtWhitespace = IsWhitespace(text[p]);
+
+  while (p > 0 && IsWhitespace(text[p]))
+    p--;
+
+  if (IsAlphaNumeric(text[p])) {
+    while (p > 0 && IsAlphaNumeric(text[p]))
+      p--;
+  } else {
+    while (p > 0 && IsPunctuation(text[p]))
+      p--;
+  }
+  if (p != 0)
+    p++;
+
+  if (!isStartedAtWhitespace) {
+    while (p > 0 && IsWhitespace(text[p]))
+      p--;
+  }
+
+  return p;
 }

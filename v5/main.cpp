@@ -1,13 +1,19 @@
 #include "tree.cpp"
 #include "win32.cpp"
-#include <malloc.h>
 
 #define WEIRD_NUMBER 200
 
 u32 textBgColor = 0x000000;
-u32 textColor = 0xeeeeee;
-u32 selectionBgColor = 0x223322;
+u32 textColor = 0xdddddd;
+
+u32 selectionBgColor = 0x112011;
 u32 selectionColor = 0xffffff;
+u32 cursorColor = 0x228822;
+
+u32 selectionBgColorInsert = 0x201111;
+u32 selectionColorInsert = 0xffffff;
+u32 cursorColorInsert = 0xff2222;
+
 f32 vPadding = 20;
 
 i32 isRunning = 1;
@@ -15,6 +21,9 @@ i32 isRunning = 1;
 f32 lineHeight = 1.1;
 i32 fontSize = 15;
 i32 isInitialized = 0;
+
+enum Mode { Normal, Insert };
+Mode mode;
 
 BITMAPINFO bitmapInfo;
 HWND win;
@@ -29,7 +38,7 @@ HFONT font;
 f32 offset;
 
 SIZE s;
-TEXTMETRICA m;
+TEXTMETRICW m;
 
 HBITMAP canvasBitmap;
 
@@ -37,6 +46,8 @@ MyBitmap canvas;
 
 Item* root;
 Item* selectedItem;
+i32 cursorPos;
+i32 desiredOffset;
 
 c16 rootPath[MAX_PATH];
 
@@ -98,9 +109,9 @@ void Draw() {
   AddChildrenToStack(&stack[0], &stackLen, root, 0);
 
   SelectObject(canvasDc, font);
-  GetTextExtentPoint32A(canvasDc, "w", 1, &s);
+  GetTextExtentPoint32W(canvasDc, L"w", 1, &s);
 
-  GetTextMetrics(canvasDc, &m);
+  GetTextMetricsW(canvasDc, &m);
 
   f32 lineHeightPx = m.tmHeight * lineHeight;
   f32 textOffsetY = (lineHeightPx - m.tmHeight) / 2.0f;
@@ -114,9 +125,16 @@ void Draw() {
     f32 x = hPadding + level * s.cx * 2;
 
     if (item == selectedItem) {
-      PaintRect(&canvas, 0, y, canvas.width, lineHeightPx, 0x223322);
-      TextColor(selectionColor);
-      BgColor(selectionBgColor);
+      u32 lineColor = mode == Insert ? selectionBgColorInsert : selectionBgColor;
+
+      PaintRect(&canvas, 0, y, canvas.width, lineHeightPx, lineColor);
+
+      BgColor(lineColor);
+      if (mode == Insert)
+        TextColor(selectionColorInsert);
+      else
+        TextColor(selectionColor);
+
     } else {
       TextColor(textColor);
       BgColor(textBgColor);
@@ -133,6 +151,21 @@ void Draw() {
 
     TextOutW(canvasDc, x, y + textOffsetY, item->text, item->textLen);
 
+    if (item == selectedItem) {
+      if (mode == Insert) {
+        PaintRect(&canvas, x + cursorPos * s.cx - 1, y, 2, lineHeightPx, cursorColorInsert);
+      } else {
+        BgColor(cursorColor);
+
+        // this -1 and +2 is due to TextOutW drawing an outline wider by 1 pixel. I want to have a
+        // rectangular cursor of lineHeight, not oval this seems to be regardless of fontSize
+        // (tested on 50 fontsize)
+        PaintRect(&canvas, x + cursorPos * s.cx - 1, y, s.cx + 2, lineHeightPx, cursorColor);
+
+        if (item->textLen > 0 && cursorPos < item->textLen)
+          TextOutW(canvasDc, x + cursorPos * s.cx, y + textOffsetY, item->text + cursorPos, 1);
+      }
+    }
     y += lineHeightPx;
     if (item->childrenLen > 0 && !item->isClosed)
       AddChildrenToStack(&stack[0], &stackLen, item, level + 1);
@@ -271,9 +304,14 @@ void LoadFolder(Item* item) {
   }
 }
 
+void UpdateCursorPos(i32 pos) {
+  cursorPos = Max(Min(pos, selectedItem->textLen), 0);
+}
+
 void UpdateSelection(Item* item) {
   if (item) {
     selectedItem = item;
+    UpdateCursorPos(cursorPos);
     f32 itemOffset = GetItemOffsetFromTop(item);
     if (itemOffset < offset)
       offset = itemOffset - m.tmHeight * 2;
@@ -283,20 +321,14 @@ void UpdateSelection(Item* item) {
 }
 
 void MoveDown() {
-  Item* item = GetItemBelow(selectedItem);
-  if (item && IsSkipped(item, IndexOf(item)))
-    item = GetItemBelow(item);
-  UpdateSelection(item);
+  UpdateSelection(GetItemBelow(selectedItem));
 }
 
 void MoveUp() {
-  Item* item = GetItemAbove(selectedItem);
-  if (item && IsSkipped(item, IndexOf(item)))
-    item = GetItemAbove(item);
-  UpdateSelection(item);
+  UpdateSelection(GetItemAbove(selectedItem));
 }
 
-void MoveRight() {
+void MoveToChild() {
   if (selectedItem->childrenLen == 0 && selectedItem->fileAttrs != 0)
     LoadFolder(selectedItem);
   else if (selectedItem->childrenLen > 0) {
@@ -315,17 +347,11 @@ void MoveLeft() {
 }
 
 void MoveToNextSibling() {
-  Item* parent = selectedItem->parent;
-  i32 index = IndexOf(selectedItem);
-  if (index < parent->childrenLen - 1)
-    UpdateSelection(parent->children[index + 1]);
+  UpdateSelection(GetNextSibling(selectedItem));
 }
 
 void MoveToPrevSibling() {
-  Item* parent = selectedItem->parent;
-  i32 index = IndexOf(selectedItem);
-  if (index > 0)
-    UpdateSelection(parent->children[index - 1]);
+  UpdateSelection(GetPrevSibling(selectedItem));
 }
 
 void MoveToParent() {
@@ -351,42 +377,146 @@ void CloseAllSiblings() {
   }
 }
 
+void RemoveCharFromLeft() {
+  if (cursorPos > 0) {
+    RemoveChars(selectedItem, cursorPos - 1, cursorPos - 1);
+    cursorPos -= 1;
+  }
+}
+
+void RemoveWordFromLeft() {
+  if (cursorPos > 0) {
+    i32 wordEnd = cursorPos - 1;
+    i32 wordStart = wordEnd;
+    if (IsWhitespace(selectedItem->text[wordStart])) {
+      while (wordStart > 0 && IsWhitespace(selectedItem->text[wordStart]))
+        wordStart--;
+
+    } else {
+      while (wordStart > 0 && !IsWhitespace(selectedItem->text[wordStart]))
+        wordStart--;
+    }
+
+    RemoveChars(selectedItem, wordStart, wordEnd);
+    cursorPos -= wordEnd - wordStart + 1;
+  }
+}
+
+void RemoveCurrentChar() {
+  if (cursorPos < selectedItem->textLen) {
+    RemoveChars(selectedItem, cursorPos, cursorPos);
+    UpdateCursorPos(cursorPos);
+  }
+}
+
+void CreateItemBefore() {
+  Item* child = (Item*)calloc(1, sizeof(Item));
+  AddChildAt(selectedItem->parent, child, IndexOf(selectedItem));
+  selectedItem = child;
+  cursorPos = 0;
+  mode = Insert;
+}
+
+void CreateItemAfter() {
+  Item* child = (Item*)calloc(1, sizeof(Item));
+  AddChildAt(selectedItem->parent, child, IndexOf(selectedItem) + 1);
+  selectedItem = child;
+  cursorPos = 0;
+  mode = Insert;
+}
+
+i32 ignoreNextCharEvent = 0;
 LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
   switch (message) {
+  case WM_CHAR:
+    if (ignoreNextCharEvent) {
+      ignoreNextCharEvent = 0;
+      return 0;
+    }
+
+    if (mode == Insert) {
+      InsertCharAtCursor(selectedItem, cursorPos, wParam);
+      cursorPos++;
+    }
+
+    break;
   case WM_KEYDOWN:
-    if (wParam == 'Q') {
-      PostQuitMessage(0);
-      isRunning = 0;
+    if (mode == Insert) {
+      if (wParam == VK_ESCAPE) {
+        mode = Normal;
+        ignoreNextCharEvent = 1;
+      } else if (wParam == VK_BACK && IsKeyPressed(VK_CONTROL)) {
+        RemoveWordFromLeft();
+        ignoreNextCharEvent = 1;
+      } else if (wParam == VK_BACK) {
+        RemoveCharFromLeft();
+        ignoreNextCharEvent = 1;
+      }
     }
+    if (mode == Normal) {
+      if (wParam == 'Q') {
+        PostQuitMessage(0);
+        isRunning = 0;
+      }
+      if (wParam == 'W')
+        UpdateCursorPos(JumpWordForward(selectedItem, cursorPos));
+      if (wParam == 'B')
+        UpdateCursorPos(JumpWordBackward(selectedItem, cursorPos));
 
-    if (wParam == 'O' && IsKeyPressed(VK_CONTROL))
-      OpenAllSiblings();
+      if (wParam == 'O' && IsKeyPressed(VK_CONTROL))
+        OpenAllSiblings();
 
-    if (wParam == 'Y' && IsKeyPressed(VK_CONTROL))
-      CloseAllSiblings();
+      if (wParam == 'Y' && IsKeyPressed(VK_CONTROL))
+        CloseAllSiblings();
 
-    if (IsKeyPressed(VK_CONTROL)) {
-      if (wParam == 'J')
-        MoveToNextSibling();
-      if (wParam == 'K')
-        MoveToPrevSibling();
-      if (wParam == 'H')
-        MoveToParent();
-      if (wParam == 'L')
-        MoveRight();
-    } else {
-      if (wParam == 'J')
-        MoveDown();
-      if (wParam == 'K')
-        MoveUp();
-      if (wParam == 'H')
-        MoveLeft();
-      if (wParam == 'L')
-        MoveRight();
+      if (IsKeyPressed(VK_CONTROL)) {
+        if (wParam == 'J')
+          MoveToNextSibling();
+        if (wParam == 'K')
+          MoveToPrevSibling();
+        if (wParam == 'H')
+          MoveLeft();
+        if (wParam == 'L')
+          MoveToChild();
+      } else {
+        if (wParam == 'J')
+          MoveDown();
+        if (wParam == 'K')
+          MoveUp();
+        if (wParam == 'H')
+          UpdateCursorPos(cursorPos - 1);
+        if (wParam == 'L')
+          UpdateCursorPos(cursorPos + 1);
+      }
+
+      if (wParam == VK_BACK && IsKeyPressed(VK_CONTROL))
+        RemoveWordFromLeft();
+      else if (wParam == VK_BACK)
+        RemoveCharFromLeft();
+      if (wParam == 'X')
+        RemoveCurrentChar();
+
+      if (wParam == 'Z')
+        CenterViewOnItem();
+      if (wParam == 'O' && IsKeyPressed(VK_SHIFT))
+        CreateItemBefore();
+      else if (wParam == 'O')
+        CreateItemAfter();
+
+      if (wParam == 'I' && IsKeyPressed(VK_SHIFT)) {
+        mode = Insert;
+        cursorPos = 0;
+      } else if (wParam == 'I')
+        mode = Insert;
+      else if (wParam == 'A' && IsKeyPressed(VK_SHIFT)) {
+        mode = Insert;
+        UpdateCursorPos(selectedItem->textLen);
+      } else if (wParam == 'A') {
+        mode = Insert;
+        UpdateCursorPos(cursorPos + 1);
+      }
+      ignoreNextCharEvent = 1;
     }
-
-    if (wParam == 'Z')
-      CenterViewOnItem();
 
     break;
   case WM_DESTROY:
@@ -407,8 +537,8 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
   return DefWindowProc(handle, message, wParam, lParam);
 }
 
-int WinMain([[maybe_unused]] HINSTANCE hInstance, [[maybe_unused]] HINSTANCE hPrevInstance,
-            [[maybe_unused]] LPSTR lpCmdLine, [[maybe_unused]] int nShowCmd) {
+int wWinMain([[maybe_unused]] HINSTANCE hInstance, [[maybe_unused]] HINSTANCE hPrevInstance,
+             [[maybe_unused]] PWSTR lpCmdLine, [[maybe_unused]] int nShowCmd) {
 
   SetProcessDPIAware();
 
