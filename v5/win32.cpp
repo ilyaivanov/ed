@@ -28,6 +28,7 @@ inline void vfree(void* ptr) {
   VirtualFree(ptr, 0, MEM_RELEASE);
 };
 
+
 int strequal(const char* a, const char* b) {
   while (*a && *b) {
     if (*a != *b)
@@ -122,8 +123,8 @@ HWND OpenWindow(WindowProc* proc) {
   //  int screenHeight = GetDeviceCaps(screenDc, VERTRES);
 
   int width = 1800;
-  int height = 1000;
-  const char* title = "Hell";
+  int height = 2050;
+  const char* title = "Hell v5";
 
   HWND win = CreateWindowA(windowClass.lpszClassName, title, WS_OVERLAPPEDWINDOW | WS_VISIBLE,
                            screenWidth - width, 0, width, height, 0, 0, instance, 0);
@@ -133,6 +134,28 @@ HWND OpenWindow(WindowProc* proc) {
   SUCCEEDED(DwmSetWindowAttribute(win, DWMWA_USE_IMMERSIVE_DARK_MODE, &USE_DARK_MODE,
                                   sizeof(USE_DARK_MODE)));
   return win;
+}
+
+inline BOOL IsKeyPressed(u32 code) {
+  return (GetKeyState(code) >> 15) & 1;
+}
+
+i64 GetMyFileSize(const wchar_t* path) {
+  HANDLE file = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+
+  LARGE_INTEGER size = {};
+  GetFileSizeEx(file, &size);
+
+  CloseHandle(file);
+  return (i64)size.QuadPart;
+}
+
+void ReadFileInto(const wchar_t* path, u32 fileSize, char* buffer) {
+  HANDLE file = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+
+  DWORD bytesRead;
+  ReadFile(file, buffer, fileSize, &bytesRead, 0);
+  CloseHandle(file);
 }
 
 //
@@ -149,11 +172,16 @@ i32 Max(i32 a, i32 b) {
   else
     return b;
 }
+
 i32 Min(i32 a, i32 b) {
   if (a < b)
     return a;
   else
     return b;
+}
+
+f32 lerp(f32 from, f32 to, f32 v) {
+  return (1 - v) * from + to * v;
 }
 
 //

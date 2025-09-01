@@ -40,15 +40,31 @@ Item* AddChildAsText(Item* parent, const wchar_t* text, i32 at) {
   return child;
 }
 
+Item* CreateItemLen(Item* parent, char* start, i32 len) {
+  // memory leak
+  c8* res = (c8*)calloc(len + 1, 2);
+  for (i32 i = 0; i < len; i++) {
+    res[i * 2] = start[i];
+  }
+  return AddChildAsText(parent, (wchar_t*)res, -1);
+}
+
 typedef struct StackEntry {
   int level;
   Item* item;
 } StackEntry;
 
+int IsSkipped(Item* item, i32 index) {
+  return index > 0 && item->parent->children[index - 1]->isClosed && item->text[0] == L'}';
+}
+
 void AddChildrenToStack(StackEntry* stack, i32* stackLen, Item* parent, i32 level) {
   for (i32 i = parent->childrenLen - 1; i >= 0; i--) {
-    stack[*stackLen] = (StackEntry){.level = level, .item = parent->children[i]};
-    *stackLen += 1;
+    Item* item = parent->children[i];
+    if (!IsSkipped(item, i)) {
+      stack[*stackLen] = (StackEntry){.level = level, .item = parent->children[i]};
+      *stackLen += 1;
+    }
   }
 }
 
@@ -76,6 +92,10 @@ Item* GetLastChild(Item* parent) {
 
 i32 IsLastItem(Item* item) {
   return IndexOf(item) == (item->parent->childrenLen - 1);
+}
+
+int IsFolder(Item* item) {
+  return item->fileAttrs & FILE_ATTRIBUTE_DIRECTORY;
 }
 
 Item* GetItemBelow(Item* item) {
@@ -117,11 +137,14 @@ i32 GetVisibleChildCount(Item* item) {
   if (item->isClosed)
     return 0;
 
-  i32 res = item->childrenLen;
+  i32 res = 0;
 
   for (i32 i = 0; i < item->childrenLen; i++) {
-    if (item->children[i]->childrenLen > 0)
-      res += GetVisibleChildCount(item->children[i]);
+    Item* child = item->children[i];
+    if (!IsSkipped(child, i))
+      res++;
+      
+    res += GetVisibleChildCount(child);
   }
 
   return res;

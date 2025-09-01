@@ -1,3 +1,20 @@
 Starting to work on a v5 (this time I will get it done, right?)
 Repeat same functionality (without undo/redo) but with nested items (collapse, show) 
 and minimal-readonly files system support
+What do I need to do this? 
+  - scroll/autoscroll
+  - gg G
+  - wW bB iI aA oO 
+  - c-hjkl
+  - save files 
+  
+Day 1
+  read folders\files into a tree
+  navigate around tree
+  open\close nodes
+
+Day 2
+  scroll into an item
+
+Day 3 
+  autoscroll
