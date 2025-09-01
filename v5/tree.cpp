@@ -45,26 +45,17 @@ void AddChildAt(Item* parent, Item* child, i32 at) {
   child->parent = parent;
 }
 
-Item* AddChildAsText(Item* parent, const wchar_t* text, i32 at) {
+Item* AddChildAsText(Item* parent, i32 at, const wchar_t* text, i32 len) {
   Item* child = (Item*)calloc(1, sizeof(Item));
 
   AddChildAt(parent, child, at);
 
-  child->textLen = wcslen(text);
+  child->textLen = len;
   child->textCapacity = (child->textLen + 1) * sizeof(wchar_t);
   child->text = (wchar_t*)calloc(child->textCapacity, 1);
   memcpy(child->text, text, child->textLen * sizeof(wchar_t));
 
   return child;
-}
-
-Item* CreateItemLen(Item* parent, char* start, i32 len) {
-  // memory leak
-  c8* res = (c8*)calloc(len + 1, 2);
-  for (i32 i = 0; i < len; i++) {
-    res[i * 2] = start[i];
-  }
-  return AddChildAsText(parent, (wchar_t*)res, -1);
 }
 
 typedef struct StackEntry {

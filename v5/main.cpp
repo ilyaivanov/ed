@@ -250,7 +250,7 @@ void TryAddItem(WIN32_FIND_DATAW data, Item* parent) {
     if (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
       index = FindIndexOfLastFolder(parent);
 
-    Item* item = AddChildAsText(parent, data.cFileName, index);
+    Item* item = AddChildAsText(parent, index, data.cFileName, StrLen(data.cFileName));
     item->fileAttrs = data.dwFileAttributes;
   }
 }
@@ -275,18 +275,22 @@ void LoadFolder(Item* item) {
 
     char* file = (char*)valloc(size);
     ReadFileInto(path, size, file);
+    i32 utfCodepointsLen = MultiByteToWideChar(CP_UTF8, MB_PRECOMPOSED, file, -1, 0, 0);
+
+    wchar_t* fileUtf = (wchar_t*)valloc(utfCodepointsLen * 2);
+    MultiByteToWideChar(CP_UTF8, MB_PRECOMPOSED, file, size, fileUtf, utfCodepointsLen);
 
     i32 pos = 0;
     StackEntry stack[WEIRD_NUMBER] = {{-1, item}};
     int stackLen = 1;
 
-    while (pos < size) {
+    while (pos < utfCodepointsLen - 1) {
       i32 start = pos;
-      while (pos < size && file[pos] != '\n')
+      while (pos < size && fileUtf[pos] != L'\r' && fileUtf[pos] != L'\n')
         pos++;
 
       i32 lineStart = start;
-      while (file[start] == ' ' && start < pos)
+      while (file[start] == L' ' && start < pos)
         start++;
 
       i32 offset = start - lineStart;
@@ -299,12 +303,16 @@ void LoadFolder(Item* item) {
       while (stack[stackLen - 1].level >= offset)
         stackLen--;
 
-      Item* item = CreateItemLen(stack[stackLen - 1].item, file + start, pos - start);
+      Item* item = AddChildAsText(stack[stackLen - 1].item, -1, fileUtf + start, pos - start);
       stack[stackLen].level = offset;
       stack[stackLen++].item = item;
 
-      pos++;
+      if (fileUtf[pos] == L'\r')
+        pos++;
+      if (fileUtf[pos] == L'\n')
+        pos++;
     }
+    vfree(fileUtf);
     vfree(file);
   }
 }
@@ -535,7 +543,7 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
 
       if (wParam == 'Z')
         CenterViewOnItem();
-        
+
       if (wParam == 'O' && IsKeyPressed(VK_CONTROL))
         OpenAllSiblings();
       else if (wParam == 'Y' && IsKeyPressed(VK_CONTROL))
