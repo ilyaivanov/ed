@@ -337,12 +337,12 @@ void SaveFile() {
     Item* item = entry.item;
     i32 level = entry.level;
 
-    for (i32 i = 0; i < level * 2; i++) 
+    for (i32 i = 0; i < level * 2; i++)
       saveBuffer[len++] = L' ';
-    
-    for (i32 i = 0; i < item->textLen; i++) 
+
+    for (i32 i = 0; i < item->textLen; i++)
       saveBuffer[len++] = item->text[i];
-    
+
     saveBuffer[len++] = L'\n';
 
     if (item->childrenLen > 0)
@@ -516,6 +516,11 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
     }
 
     break;
+  case WM_SYSCHAR:
+    // disabled the annoying sound of unhandled alt+key
+    return 0;
+    break;
+  case WM_SYSKEYDOWN:
   case WM_KEYDOWN:
     if (mode == Insert) {
       if (wParam == VK_ESCAPE) {
@@ -531,6 +536,7 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
     }
     if (mode == Normal) {
       if (wParam == 'Q') {
+        SaveFile();
         PostQuitMessage(0);
         isRunning = 0;
       }
@@ -550,18 +556,27 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
         if (wParam == 'K')
           MoveToPrevSibling();
         if (wParam == 'H')
-          MoveLeft();
+          UpdateCursorPos(cursorPos - 1);
         if (wParam == 'L')
-          MoveToChild();
+          UpdateCursorPos(cursorPos + 1);
+      } else if (IsKeyPressed(VK_MENU)) {
+        if (wParam == 'J')
+          SwapDown(selectedItem);
+        if (wParam == 'K')
+          SwapUp(selectedItem);
+        if (wParam == 'H')
+          SwapLeft(selectedItem);
+        if (wParam == 'L')
+          SwapRight(selectedItem);
       } else {
         if (wParam == 'J')
           MoveDown();
         if (wParam == 'K')
           MoveUp();
         if (wParam == 'H')
-          UpdateCursorPos(cursorPos - 1);
+          MoveLeft();
         if (wParam == 'L')
-          UpdateCursorPos(cursorPos + 1);
+          MoveToChild();
       }
 
       if (wParam == VK_BACK && IsKeyPressed(VK_CONTROL))
@@ -587,6 +602,11 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
 
       if (wParam == 'Z')
         CenterViewOnItem();
+
+      if (wParam == '4' && IsKeyPressed(VK_SHIFT))
+        cursorPos = 0;
+      if (wParam == '0')
+        cursorPos = selectedItem->textLen;
 
       if (wParam == 'S' && IsKeyPressed(VK_CONTROL))
         SaveFile();
@@ -640,10 +660,7 @@ int wWinMain([[maybe_unused]] HINSTANCE hInstance, [[maybe_unused]] HINSTANCE hP
 
   SetProcessDPIAware();
 
-  // GetCurrentDirectoryW(MAX_PATH, (wchar_t*)&rootPath[0]);
-
-  const wchar_t* s = L"C:\\holy\\coditor";
-  memmove(rootPath, s, StrLen(s) * 2);
+  GetCurrentDirectoryW(MAX_PATH, rootPath);
 
   canvasDc = CreateCompatibleDC(0);
 

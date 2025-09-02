@@ -286,6 +286,44 @@ void FreeItemAndSubitems(Item* item) {
 void RemoveItem(Item* item) {
   RemoveItemFromParent(item);
   FreeItemAndSubitems(item);
+}
 
-  //
+//
+// Moving items around 
+//
+void SwapUp(Item* item) {
+  i32 index = IndexOf(item);
+  Item* parent = item->parent;
+  if (index > 0) {
+    Item* tmp = parent->children[index - 1];
+    parent->children[index - 1] = item;
+    parent->children[index] = tmp;
+  }
+}
+
+void SwapLeft(Item* item) {
+  if (!IsRoot(item->parent)) {
+    RemoveItemFromParent(item);
+    AddChildAt(item->parent->parent, item, IndexOf(item->parent) + 1);
+  }
+}
+
+void SwapRight(Item* item) {
+  i32 index = IndexOf(item);
+  if (index > 0) {
+    RemoveItemFromParent(item);
+    Item* prev = item->parent->children[index - 1];
+    AddChildAt(prev, item, -1);
+    prev->isClosed = 0;
+  }
+}
+
+void SwapDown(Item* item) {
+  i32 index = IndexOf(item);
+  Item* parent = item->parent;
+  if (index < parent->childrenLen - 1) {
+    Item* tmp = parent->children[index + 1];
+    parent->children[index + 1] = item;
+    parent->children[index] = tmp;
+  }
 }

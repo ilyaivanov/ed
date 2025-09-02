@@ -1,21 +1,30 @@
 Starting to work on a v5 (this time I will get it done, right?)
 Repeat same functionality (without undo/redo) but with nested items (collapse, show) 
 and minimal-readonly files system support
+
 What do I need to do this? 
   - scroll/autoscroll
   - gg G
   - wW bB iI aA oO 
   - c-hjkl
   - save files 
+  - multichar motions
+  - enter in insert mode
+  - fF tT
+  - composite motions, but hardcoded and limited
+  - move items around
+  - popup menu like in Helix for z g space
+  - cursor history
+  - multiple cursors
   
 Day 1
   read folders\files into a tree
   navigate around tree
   open\close nodes
-
+  
 Day 2 (very little work was done)
   scroll into an item
-
+  
 Day 3 
   autoscroll
   move to siblings (via ctrl)
@@ -23,3 +32,7 @@ Day 3
     w b iI aA oO
   Proper handle files with UTF-8
   Save files in UTF-8
+  
+Day 4
+  Testing the app with notes
+  Swap items around
