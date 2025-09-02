@@ -321,6 +321,11 @@ void LoadFolder(Item* item) {
 
 wchar_t* saveBuffer;
 void SaveFile() {
+  Item* file = FindFile(selectedItem);
+
+  if (file->childrenLen == 0)
+    return;
+
   if (!saveBuffer)
     saveBuffer = (wchar_t*)valloc(MB(10));
 
@@ -329,7 +334,6 @@ void SaveFile() {
   StackEntry* stack = (StackEntry*)malloc(400 * sizeof(StackEntry));
   i32 stackLen = 0;
 
-  Item* file = FindFile(selectedItem);
   AddChildrenToStack(&stack[0], &stackLen, file, 0);
 
   while (stackLen > 0) {
