@@ -207,6 +207,8 @@ void Draw() {
       AddChildrenToStack(&stack[0], &stackLen, item, level + 1);
   }
 
+  free(stack);
+
   // Scrollbar
   //
   f32 pageHeight = GetVisibleChildCount(root) * m.tmHeight * lineHeight;
@@ -290,7 +292,7 @@ void LoadFolder(Item* item) {
         pos++;
 
       i32 lineStart = start;
-      while (file[start] == L' ' && start < pos)
+      while (fileUtf[start] == L' ' && start < pos)
         start++;
 
       i32 offset = start - lineStart;
@@ -315,6 +317,48 @@ void LoadFolder(Item* item) {
     vfree(fileUtf);
     vfree(file);
   }
+}
+
+wchar_t* saveBuffer;
+void SaveFile() {
+  if (!saveBuffer)
+    saveBuffer = (wchar_t*)valloc(MB(10));
+
+  i32 len = 0;
+
+  StackEntry* stack = (StackEntry*)malloc(400 * sizeof(StackEntry));
+  i32 stackLen = 0;
+
+  Item* file = FindFile(selectedItem);
+  AddChildrenToStack(&stack[0], &stackLen, file, 0);
+
+  while (stackLen > 0) {
+    StackEntry entry = stack[--stackLen];
+    Item* item = entry.item;
+    i32 level = entry.level;
+
+    for (i32 i = 0; i < level * 2; i++) 
+      saveBuffer[len++] = L' ';
+    
+    for (i32 i = 0; i < item->textLen; i++) 
+      saveBuffer[len++] = item->text[i];
+    
+    saveBuffer[len++] = L'\n';
+
+    if (item->childrenLen > 0)
+      AddChildrenToStack(&stack[0], &stackLen, item, level + 1);
+  }
+
+  c16 path[MAX_PATH];
+  FillItemPath(path, file, rootPath);
+
+  i32 resLen = WideCharToMultiByte(CP_UTF8, 0, saveBuffer, len, 0, 0, 0, 0);
+  char* buff = (char*)valloc(resLen);
+
+  WideCharToMultiByte(CP_UTF8, 0, saveBuffer, len, buff, resLen, 0, 0);
+  WriteMyFile(path, buff, resLen);
+  vfree(buff);
+  MarkFileAsSaved(1);
 }
 
 void UpdateCursorPos(i32 pos) {
@@ -544,7 +588,9 @@ LRESULT OnEvent(HWND handle, UINT message, WPARAM wParam, LPARAM lParam) {
       if (wParam == 'Z')
         CenterViewOnItem();
 
-      if (wParam == 'O' && IsKeyPressed(VK_CONTROL))
+      if (wParam == 'S' && IsKeyPressed(VK_CONTROL))
+        SaveFile();
+      else if (wParam == 'U' && IsKeyPressed(VK_CONTROL))
         OpenAllSiblings();
       else if (wParam == 'Y' && IsKeyPressed(VK_CONTROL))
         CloseAllSiblings();
@@ -616,7 +662,7 @@ int wWinMain([[maybe_unused]] HINSTANCE hInstance, [[maybe_unused]] HINSTANCE hP
   while (isRunning) {
     MSG msg;
 
-    while (PeekMessageA(&msg, 0, 0, 0, PM_REMOVE)) {
+    while (PeekMessageW(&msg, 0, 0, 0, PM_REMOVE)) {
       TranslateMessage(&msg);
       DispatchMessage(&msg);
     }

@@ -21,3 +21,5 @@ Day 3
   move to siblings (via ctrl)
   Starting to work on editing
     w b iI aA oO
+  Proper handle files with UTF-8
+  Save files in UTF-8

@@ -22,6 +22,7 @@ typedef double f64;
 
 #define ArrayLength(array) (sizeof(array) / sizeof(array[0]))
 #define KB(v) (1024 * v)
+#define MB(v) (KB(1024 * v))
 
 inline void* valloc(size_t size) {
   return VirtualAlloc(0, size, MEM_COMMIT, PAGE_READWRITE);
@@ -156,6 +157,14 @@ void ReadFileInto(const wchar_t* path, u32 fileSize, char* buffer) {
 
   DWORD bytesRead;
   ReadFile(file, buffer, fileSize, &bytesRead, 0);
+  CloseHandle(file);
+}
+
+void WriteMyFile(const wchar_t* path, char* content, int size) {
+  HANDLE file = CreateFileW(path, GENERIC_WRITE, FILE_SHARE_READ, 0, CREATE_ALWAYS, 0, 0);
+
+  DWORD bytesWritten;
+  WriteFile(file, content, size, &bytesWritten, 0);
   CloseHandle(file);
 }
 
